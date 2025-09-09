@@ -45,7 +45,7 @@ export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersPr
       location: "",
       radius: "25 km",
       workMode: [],
-      category: "",
+      category: "all",
       distance: 50,
       sources: [],
       experience: [],
@@ -183,7 +183,7 @@ export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersPr
               <SelectValue placeholder="Select category" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Categories</SelectItem>
+              <SelectItem value="all">All Categories</SelectItem>
               <SelectItem value="Software Engineering">Software Engineering</SelectItem>
               <SelectItem value="Data">Data</SelectItem>
               <SelectItem value="Design">Design</SelectItem>
@@ -250,7 +250,7 @@ export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersPr
               <SelectValue placeholder="Any time" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Any time</SelectItem>
+              <SelectItem value="any">Any time</SelectItem>
               <SelectItem value="24h">Last 24 hours</SelectItem>
               <SelectItem value="3d">Last 3 days</SelectItem>
               <SelectItem value="7d">Last 7 days</SelectItem>

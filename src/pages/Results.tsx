@@ -28,7 +28,7 @@ const Results = () => {
     location: searchParams.get('location') || "",
     radius: searchParams.get('radius') || "25 km",
     workMode: searchParams.get('workMode')?.split(',').filter(Boolean) || [],
-    category: searchParams.get('category') || "",
+    category: searchParams.get('category') || "all",
     distance: 50,
     sources: [],
     experience: [],
@@ -83,7 +83,7 @@ const Results = () => {
       );
     }
 
-    if (filters.category) {
+    if (filters.category && filters.category !== "all") {
       filtered = filtered.filter(bundle => 
         bundle.canonicalJob.category === filters.category
       );
@@ -250,8 +250,8 @@ const Results = () => {
                     <p>Try widening your radius or removing some filters.</p>
                   </div>
                   <Button variant="outline" onClick={() => setFilters({
-                    query: "", location: "", radius: "25 km", workMode: [], category: "",
-                    distance: 50, sources: [], experience: [], postedWithin: "", company: ""
+                    query: "", location: "", radius: "25 km", workMode: [], category: "all",
+                    distance: 50, sources: [], experience: [], postedWithin: "any", company: ""
                   })}>
                     Reset all filters
                   </Button>

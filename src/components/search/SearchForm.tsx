@@ -120,7 +120,7 @@ export const SearchForm = ({ onSearch, initialFilters, compact = false }: Search
               </div>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Categories</SelectItem>
+              <SelectItem value="all">All Categories</SelectItem>
               <SelectItem value="Software Engineering">Software Engineering</SelectItem>
               <SelectItem value="Data">Data</SelectItem>
               <SelectItem value="Design">Design</SelectItem>
