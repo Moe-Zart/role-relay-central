@@ -1,5 +1,5 @@
 export type JobSource = {
-  site: "LinkedIn" | "Indeed" | "Seek" | "Glassdoor" | "Company" | "Other";
+  site: "LinkedIn" | "Indeed" | "Seek" | "Glassdoor" | "Jora" | "Company" | "Other";
   url: string;
   postedAt: string;
   externalId: string;

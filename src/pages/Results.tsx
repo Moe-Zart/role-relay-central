@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
-import { SlidersHorizontal, ArrowUpDown, Menu, X } from "lucide-react";
+import { SlidersHorizontal, ArrowUpDown, Menu, X, Loader2 } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { SearchForm } from "@/components/search/SearchForm";
 import { JobFilters } from "@/components/filters/JobFilters";
@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SearchFilters, JobBundle } from "@/types/jobs";
-import { mockJobBundles } from "@/data/mockJobs";
+import { jobApiService } from "@/services/jobApi";
 import { useToast } from "@/hooks/use-toast";
 
 const Results = () => {
@@ -20,6 +20,15 @@ const Results = () => {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<JobBundle | null>(null);
   const [savedJobs, setSavedJobs] = useState<string[]>([]);
+  const [jobBundles, setJobBundles] = useState<JobBundle[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0
+  });
   const { toast } = useToast();
 
   // Initialize filters from URL params
@@ -44,6 +53,52 @@ const Results = () => {
     }
   }, []);
 
+  // Fetch jobs from API
+  const fetchJobs = async (page = 1) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await jobApiService.getJobs(filters, page, pagination.limit);
+      const bundles = jobApiService.convertToJobBundles(response.jobs);
+      
+      if (page === 1) {
+        setJobBundles(bundles);
+      } else {
+        setJobBundles(prev => [...prev, ...bundles]);
+      }
+      
+      setPagination(response.pagination);
+    } catch (err) {
+      console.error('API Error:', err);
+      setError('Backend server is not running. Please start the server to see live job data.');
+      
+      // Set empty state when API is not available
+      if (page === 1) {
+        setJobBundles([]);
+        setPagination({
+          page: 1,
+          limit: 20,
+          total: 0,
+          totalPages: 0
+        });
+      }
+      
+      toast({
+        title: "Server Unavailable",
+        description: "The backend server is not running. Please start it to see live job data.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch jobs when filters change
+  useEffect(() => {
+    fetchJobs(1);
+  }, [filters]);
+
   // Update URL when filters change
   useEffect(() => {
     const params = new URLSearchParams();
@@ -58,61 +113,7 @@ const Results = () => {
 
   // Filter and sort jobs
   const filteredJobs = useMemo(() => {
-    let filtered = [...mockJobBundles];
-
-    // Apply filters
-    if (filters.query) {
-      const query = filters.query.toLowerCase();
-      filtered = filtered.filter(bundle => 
-        bundle.canonicalJob.title.toLowerCase().includes(query) ||
-        bundle.canonicalJob.company.toLowerCase().includes(query) ||
-        bundle.canonicalJob.descriptionSnippet.toLowerCase().includes(query)
-      );
-    }
-
-    if (filters.location) {
-      const location = filters.location.toLowerCase();
-      filtered = filtered.filter(bundle => 
-        bundle.canonicalJob.location.toLowerCase().includes(location)
-      );
-    }
-
-    if (filters.workMode.length > 0) {
-      filtered = filtered.filter(bundle => 
-        filters.workMode.includes(bundle.canonicalJob.workMode)
-      );
-    }
-
-    if (filters.category && filters.category !== "all") {
-      filtered = filtered.filter(bundle => 
-        bundle.canonicalJob.category === filters.category
-      );
-    }
-
-    if (filters.experience.length > 0) {
-      filtered = filtered.filter(bundle => 
-        filters.experience.includes(bundle.canonicalJob.experience)
-      );
-    }
-
-    if (filters.company) {
-      const company = filters.company.toLowerCase();
-      filtered = filtered.filter(bundle => 
-        bundle.canonicalJob.company.toLowerCase().includes(company)
-      );
-    }
-
-    if (filters.salaryMin) {
-      filtered = filtered.filter(bundle => 
-        bundle.canonicalJob.salaryMax && bundle.canonicalJob.salaryMax >= filters.salaryMin!
-      );
-    }
-
-    if (filters.salaryMax) {
-      filtered = filtered.filter(bundle => 
-        bundle.canonicalJob.salaryMin && bundle.canonicalJob.salaryMin <= filters.salaryMax!
-      );
-    }
+    let filtered = [...jobBundles];
 
     // Apply sorting
     filtered.sort((a, b) => {
@@ -131,7 +132,7 @@ const Results = () => {
     });
 
     return filtered;
-  }, [filters, sortBy]);
+  }, [jobBundles, sortBy]);
 
   const handleSearch = (newFilters: SearchFilters) => {
     setFilters(newFilters);
@@ -238,11 +239,37 @@ const Results = () => {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-foreground">
-                  {filteredJobs.length} job{filteredJobs.length !== 1 ? 's' : ''} found
+                  {loading ? (
+                    <div className="flex items-center space-x-2">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span>Loading jobs...</span>
+                    </div>
+                  ) : (
+                    `${pagination.total} job${pagination.total !== 1 ? 's' : ''} found`
+                  )}
                 </h2>
               </div>
               
-              {filteredJobs.length === 0 ? (
+              {error ? (
+                <div className="text-center py-12">
+                  <div className="text-muted-foreground mb-4">
+                    <h3 className="text-lg font-medium mb-2 text-destructive">Server Not Available</h3>
+                    <p className="mb-4">{error}</p>
+                    <div className="bg-muted p-4 rounded-lg text-left max-w-md mx-auto">
+                      <h4 className="font-semibold mb-2">To start the backend server:</h4>
+                      <ol className="list-decimal list-inside space-y-1 text-sm">
+                        <li>Open a terminal in the project root</li>
+                        <li>Run: <code className="bg-background px-1 rounded">npm run server:install</code></li>
+                        <li>Run: <code className="bg-background px-1 rounded">npm run dev:server</code></li>
+                        <li>Or run both frontend and backend: <code className="bg-background px-1 rounded">npm run dev:all</code></li>
+                      </ol>
+                    </div>
+                  </div>
+                  <Button variant="outline" onClick={() => fetchJobs(1)}>
+                    Try Again
+                  </Button>
+                </div>
+              ) : filteredJobs.length === 0 && !loading ? (
                 <div className="text-center py-12">
                   <div className="text-muted-foreground mb-4">
                     <SlidersHorizontal className="h-16 w-16 mx-auto mb-4 opacity-50" />

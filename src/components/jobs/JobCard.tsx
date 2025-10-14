@@ -43,7 +43,20 @@ export const JobCard = ({ bundle, onSave, onView, saved = false }: JobCardProps)
     }
   };
 
-  const timeAgo = formatDistanceToNow(new Date(canonicalJob.postedAt), { addSuffix: true });
+  const formatTimeAgo = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        return 'Recently posted';
+      }
+      return formatDistanceToNow(date, { addSuffix: true });
+    } catch (error) {
+      console.error('Error formatting date:', error, 'Date string:', dateString);
+      return 'Recently posted';
+    }
+  };
+
+  const timeAgo = formatTimeAgo(canonicalJob.postedAt);
 
   return (
     <Card className="hover:shadow-lg transition-all duration-200 border border-border group">
