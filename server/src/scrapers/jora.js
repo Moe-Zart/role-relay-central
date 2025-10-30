@@ -1,5 +1,5 @@
 import axios from 'axios';
-import cheerio from 'cheerio';
+import { load } from 'cheerio';
 import { getDatabase } from '../database/init.js';
 import logger from '../utils/logger.js';
 
@@ -40,7 +40,7 @@ export class JoraScraper {
       },
       timeout: 20000
     });
-    const $ = cheerio.load(res.data);
+    const $ = load(res.data);
 
     const results = [];
     $('[data-automation="job-list"] [data-automation="job-card"], .job-card, article').each((i, el) => {
