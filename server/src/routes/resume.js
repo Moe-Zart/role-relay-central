@@ -3,6 +3,8 @@ import multer from 'multer';
 import pdfParse from 'pdf-parse';
 import keywordExtractor from 'keyword-extractor';
 import nlp from 'compromise';
+import { getDatabase } from '../database/init.js';
+import { scoreResumeAgainstJobs } from '../services/intelligentJobMatcher.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -68,6 +70,27 @@ router.post('/extract-keywords', async (req, res) => {
   } catch (error) {
     console.error('Keyword extraction error:', error);
     res.status(500).json({ error: 'Keyword extraction failed' });
+  }
+});
+
+// POST /api/v1/resume/match-jobs
+router.post('/match-jobs', async (req, res) => {
+  try {
+    const { text, limit = 10 } = req.body;
+    if (!text) return res.status(400).json({ error: 'No resume text provided' });
+    // Fetch jobs
+    const db = getDatabase();
+    const jobs = await new Promise((resolve, reject) => {
+      db.all('SELECT * FROM jobs ORDER BY posted_at DESC LIMIT 100', (err, rows) => {
+        if (err) reject(err); else resolve(rows);
+      });
+    });
+    // Run semantic similarity scoring
+    const ranked = scoreResumeAgainstJobs(text, jobs).slice(0, limit);
+    res.json({ matches: ranked });
+  } catch (error) {
+    console.error('Job match error:', error);
+    res.status(500).json({ error: 'Failed to match jobs to resume' });
   }
 });
 

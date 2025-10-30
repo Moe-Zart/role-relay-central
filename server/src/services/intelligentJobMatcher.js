@@ -1,6 +1,9 @@
 // AI-powered job matching service for server-side use
 // This service provides intelligent job search by understanding role synonyms and related positions
 
+import natural from 'natural';
+import cosineSimilarity from 'cosine-similarity';
+
 export class IntelligentJobMatcher {
   constructor() {
     this.roleMappings = [
@@ -163,3 +166,39 @@ export class IntelligentJobMatcher {
 }
 
 export const intelligentJobMatcher = new IntelligentJobMatcher();
+
+// Compute cosine similarity between a resume and array of jobs
+export function scoreResumeAgainstJobs(resumeText, jobs) {
+  // Collect descriptions
+  const jobDescriptions = jobs.map(j => j.description_full || j.descriptionSnippet || "");
+  const corpus = [resumeText, ...jobDescriptions];
+
+  // TF-IDF vectorization
+  const tfidf = new natural.TfIdf();
+  corpus.forEach(doc => tfidf.addDocument(doc));
+
+  // Convert each doc vector to array
+  function vectorFor(docIdx) {
+    // Get list of all terms
+    const dict = {};
+    tfidf.listTerms(docIdx).forEach(item => {
+      dict[item.term] = item.tfidf;
+    });
+    // Turn all terms into the same order
+    const allTerms = tfidf.listTerms(0).map(t => t.term);
+    return allTerms.map(term => dict[term] || 0);
+  }
+  // Doc 0 is the resume
+  const resumeVec = vectorFor(0);
+
+  const jobScores = jobs.map((job, idx) => {
+    const jobIdx = idx + 1;
+    const jobVec = vectorFor(jobIdx);
+    return {
+      job,
+      score: cosineSimilarity(resumeVec, jobVec),
+    };
+  });
+  // Sort by score, descending
+  return jobScores.sort((a,b)=>b.score-a.score);
+}
