@@ -88,6 +88,19 @@ export class JoraScraper {
       }
     });
 
+    // Try to augment each job with a Company website source (best-effort)
+    for (const job of results) {
+      try {
+        const companyUrl = await this.fetchCompanySite(job.sources[0].url);
+        if (companyUrl) {
+          job.sources.push({ site: 'Company', url: companyUrl, postedAt: job.postedAt, externalId: `company_${Date.now()}` });
+        }
+        await this.delay(500);
+      } catch (_) {
+        // ignore failures to fetch company site
+      }
+    }
+
     return results;
   }
 
@@ -106,6 +119,32 @@ export class JoraScraper {
   }
 
   delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  async fetchCompanySite(jobUrl) {
+    try {
+      const res = await axios.get(jobUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        },
+        timeout: 20000
+      });
+      const $ = load(res.data);
+      let link = '';
+      $('a[href^="http"]').each((_, a) => {
+        const href = $(a).attr('href') || '';
+        const lower = href.toLowerCase();
+        if (!href) return;
+        // Skip Jora/self and typical tracking/apply redirectors if detected
+        if (lower.includes('jora') || lower.includes('google') || lower.includes('doubleclick')) return;
+        // Prefer employer/apply or company links
+        link = href;
+        return false; // break
+      });
+      return link || null;
+    } catch (e) {
+      return null;
+    }
+  }
 
   async saveJobsToDatabase(jobs) {
     const db = getDatabase();
