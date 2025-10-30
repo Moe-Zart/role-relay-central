@@ -133,4 +133,29 @@ router.post('/ats-enhance', async (req, res) => {
   }
 });
 
+// POST /api/v1/resume/rank-matches
+router.post('/rank-matches', async (req, res) => {
+  try {
+    const { text, limit = 10, useLLM = false } = req.body;
+    if (!text) return res.status(400).json({ error: 'No resume text provided' });
+    const db = getDatabase();
+    const jobs = await new Promise((resolve, reject) => {
+      db.all('SELECT * FROM jobs ORDER BY posted_at DESC LIMIT 100', (err, rows) => {
+        if (err) reject(err); else resolve(rows);
+      });
+    });
+    let ranked = scoreResumeAgainstJobs(text, jobs);
+    // Optionally, if useLLM=true, supplement score with LLM score
+    if (useLLM) {
+      const llmScores = await Promise.all(ranked.map(r => llmContextualJobFitScore(text, r.job.description_full || r.job.descriptionSnippet || "")));
+      ranked = ranked.map((r,i)=> ({ ...r, llmScore: llmScores[i], aggregateScore: 0.7*r.score + 0.3*llmScores[i] }))
+                .sort((a,b)=>b.aggregateScore - a.aggregateScore);
+    }
+    res.json({ matches: ranked.slice(0, limit) });
+  } catch (error) {
+    console.error('Rank matches error:', error);
+    res.status(500).json({ error: 'Failed to rank job matches' });
+  }
+});
+
 export default router;
