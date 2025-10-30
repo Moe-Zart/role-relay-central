@@ -9,7 +9,17 @@ export class JoraScraper {
     this.searchUrl = 'https://au.jora.com/jobs';
   }
 
-  async scrapeJobs(searchTerms = ['software engineer','developer','software developer','software engineer','it','technology','data engineer','backend','frontend','full stack'], maxPages = 2) {
+  async scrapeJobs(searchTerms = [
+    'software engineer','developer','software developer','web developer','frontend','backend','full stack','typescript','javascript','react','node',
+    'data','data engineer','data analyst','data scientist','etl','sql','python',
+    'devops','sre','platform','cloud','aws','azure','gcp',
+    'cyber','security','soc','siem','penetration tester','iam',
+    'qa','test engineer','automation',
+    'support','helpdesk','service desk','it support','desktop support',
+    'systems administrator','network engineer','infrastructure','site reliability',
+    'mobile','ios','android','flutter','react native',
+    'product manager','scrum master','agile','ba','business analyst'
+  ], maxPages = 2) {
     const jobs = [];
     try {
       for (const term of searchTerms) {
@@ -180,11 +190,15 @@ export class JoraScraper {
 
   async saveJobsToDatabase(jobs) {
     const db = getDatabase();
-    for (const job of jobs) {
-      try {
-        const jobId = `jora_${job.sources[0].externalId}_${Date.now()}`;
-        await new Promise((resolve, reject) => {
-          db.run(`
+    const exec = (sql) => new Promise((resolve, reject) => db.exec(sql, (err) => err ? reject(err) : resolve()));
+    const run = (sql, params) => new Promise((resolve, reject) => db.run(sql, params, function(err){ err ? reject(err) : resolve(this.lastID); }));
+
+    try {
+      await exec('BEGIN');
+      for (const job of jobs) {
+        try {
+          const jobId = `jora_${job.sources[0].externalId}`;
+          await run(`
             INSERT OR REPLACE INTO jobs (
               id, title, company, location, work_mode, category, experience,
               salary_min, salary_max, description_snippet, description_full,
@@ -204,13 +218,9 @@ export class JoraScraper {
             job.descriptionFull,
             job.postedAt,
             new Date().toISOString()
-          ], function(err) {
-            if (err) reject(err); else resolve(this.lastID);
-          });
-        });
-        for (const source of job.sources) {
-          await new Promise((resolve, reject) => {
-            db.run(`
+          ]);
+          for (const source of job.sources) {
+            await run(`
               INSERT OR REPLACE INTO job_sources (
                 job_id, site, url, posted_at, external_id
               ) VALUES (?, ?, ?, ?, ?)
@@ -220,12 +230,20 @@ export class JoraScraper {
               source.url,
               source.postedAt,
               source.externalId
-            ], function(err) { if (err) reject(err); else resolve(this.lastID); });
-          });
+            ]);
+          }
+        } catch (e) {
+          if (e && e.code === 'SQLITE_BUSY') {
+            await this.delay(200);
+          } else {
+            logger.error('Jora: save job failed', e);
+          }
         }
-      } catch (e) {
-        logger.error('Jora: save job failed', e);
       }
+      await exec('COMMIT');
+    } catch (txErr) {
+      try { await exec('ROLLBACK'); } catch(_) {}
+      logger.error('Jora: transaction failed', txErr);
     }
   }
 }
