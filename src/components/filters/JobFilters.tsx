@@ -164,7 +164,7 @@ export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersPr
 
         <FilterSection title="Sources" section="sources">
           <div className="space-y-2">
-            {["LinkedIn", "Indeed", "Seek", "Glassdoor", "Company Sites", "Others"].map((source) => (
+            {["Jora", "Company"].map((source) => (
               <div key={source} className="flex items-center space-x-2">
                 <Checkbox 
                   id={source}
@@ -185,15 +185,6 @@ export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersPr
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
               <SelectItem value="Software Engineering">Software Engineering</SelectItem>
-              <SelectItem value="Data">Data</SelectItem>
-              <SelectItem value="Design">Design</SelectItem>
-              <SelectItem value="Product">Product</SelectItem>
-              <SelectItem value="Marketing">Marketing</SelectItem>
-              <SelectItem value="Sales">Sales</SelectItem>
-              <SelectItem value="Customer Support">Customer Support</SelectItem>
-              <SelectItem value="Operations">Operations</SelectItem>
-              <SelectItem value="Finance">Finance</SelectItem>
-              <SelectItem value="HR">HR</SelectItem>
             </SelectContent>
           </Select>
         </FilterSection>

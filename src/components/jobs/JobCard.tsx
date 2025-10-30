@@ -22,9 +22,12 @@ export const JobCard = ({ bundle, onSave, onView, saved = false }: JobCardProps)
     ...duplicates.flatMap(job => job.sources)
   ];
   
-  const uniqueSources = allSources.filter((source, index, self) => 
-    index === self.findIndex(s => s.site === source.site)
-  );
+  const uniqueSources = allSources
+    .filter((source, index, self) => index === self.findIndex(s => s.site === source.site))
+    .sort((a, b) => {
+      const order = (site: string) => site === 'Jora' ? 0 : site === 'Company' ? 1 : 2;
+      return order(a.site) - order(b.site);
+    });
 
   const formatSalary = (min?: number, max?: number) => {
     if (!min && !max) return null;
