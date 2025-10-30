@@ -162,20 +162,7 @@ export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersPr
           </div>
         </FilterSection>
 
-        <FilterSection title="Sources" section="sources">
-          <div className="space-y-2">
-            {["Jora", "Company"].map((source) => (
-              <div key={source} className="flex items-center space-x-2">
-                <Checkbox 
-                  id={source}
-                  checked={filters.sources.includes(source)}
-                  onCheckedChange={(checked) => handleSourceChange(source, !!checked)}
-                />
-                <Label htmlFor={source}>{source}</Label>
-              </div>
-            ))}
-          </div>
-        </FilterSection>
+        {null}
 
         <FilterSection title="Job Category" section="category">
           <Select value={filters.category} onValueChange={(value) => updateFilters({ category: value })}>
