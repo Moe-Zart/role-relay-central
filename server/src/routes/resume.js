@@ -4,7 +4,7 @@ import pdfParse from 'pdf-parse';
 import keywordExtractor from 'keyword-extractor';
 import nlp from 'compromise';
 import { getDatabase } from '../database/init.js';
-import { scoreResumeAgainstJobs, llmContextualJobFitScore, formatResumeReverseChronological } from '../services/intelligentJobMatcher.js';
+import { scoreResumeAgainstJobs, llmContextualJobFitScore, formatResumeReverseChronological, atsEnhanceResume } from '../services/intelligentJobMatcher.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -117,6 +117,19 @@ router.post('/optimize', async (req, res) => {
   } catch (error) {
     console.error('Resume optimize error:', error);
     res.status(500).json({ error: 'Failed to optimize resume' });
+  }
+});
+
+// POST /api/v1/resume/ats-enhance
+router.post('/ats-enhance', async (req, res) => {
+  try {
+    const { resumeText, jobText } = req.body;
+    if (!resumeText || !jobText) return res.status(400).json({ error: 'resumeText and jobText are required' });
+    const enhancement = atsEnhanceResume(resumeText, jobText);
+    res.json(enhancement);
+  } catch (error) {
+    console.error('ATS enhancement error:', error);
+    res.status(500).json({ error: 'Failed to enhance resume for ATS' });
   }
 });
 

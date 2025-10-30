@@ -3,6 +3,7 @@
 
 import natural from 'natural';
 import cosineSimilarity from 'cosine-similarity';
+import keywordExtractor from 'keyword-extractor';
 
 export class IntelligentJobMatcher {
   constructor() {
@@ -251,4 +252,34 @@ export function formatResumeReverseChronological(text) {
   const expLines = new Set(experiences.map(e => e.raw));
   const remainder = lines.filter(line => !expLines.has(line)).join('\n');
   return formatted + (remainder ? '\n\n' + remainder : '');
+}
+
+/**
+ * Analyze job description to determine critical ATS keywords, suggest enhancements for a resume.
+ * - Extract keywords from both texts
+ * - Identify keywords in jobText not present in resumeText
+ * - Suggests updating resume to include these if relevant
+ */
+export function atsEnhanceResume(resumeText, jobText) {
+  const jobKeywords = keywordExtractor.extract(jobText, {
+    language: 'english', return_changed_case: true, remove_digits: true, remove_duplicates: true
+  });
+  const resumeKeywords = keywordExtractor.extract(resumeText, {
+    language: 'english', return_changed_case: true, remove_digits: true, remove_duplicates: true
+  });
+  // Remove generic stop words aggressively
+  const stopWords = new Set([
+    'the', 'and', 'in', 'on', 'to', 'a', 'of', 'for', 'is', 'with', 'by', 'as', 'at', 'an', 'or', 'from', 'be', 'are', 'we', 'your', 'will', 'our', 'can', 'that', 'you', 'this', 'may', 'it', 'not', 'have', 'has', 'if', 'job', 'role', 'team', 'so'  // etc.
+  ]);
+  const jobKW = jobKeywords.filter(k => !stopWords.has(k));
+  const resumeKW = new Set(resumeKeywords.filter(k => !stopWords.has(k)));
+  const missingATSKW = jobKW.filter(k => !resumeKW.has(k));
+  // Suggest a sentence with keywords
+  const suggestion = missingATSKW.length ?
+    `Consider adding these keywords for better ATS ranking: ${missingATSKW.join(', ')}.`:
+    'Your resume already contains the most relevant job keywords.';
+  return {
+    atsKeywords: missingATSKW,
+    suggestion
+  };
 }
