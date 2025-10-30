@@ -253,24 +253,15 @@ router.get('/scraping/logs', async (req, res) => {
   }
 });
 
-// Trigger manual scraping
+// Trigger manual scraping (Jora only)
 router.post('/scraping/trigger', async (req, res) => {
   try {
-    const { sites } = req.body;
-    
-    // Import scraping functions dynamically to avoid circular dependencies
+    // Jora is the only supported site now; ignore provided sites
     const { scrapeAllSites } = await import('../scrapers/scrapeAll.js');
-    
-    // Start scraping in background
-    scrapeAllSites(sites || ['indeed', 'linkedin', 'seek', 'glassdoor'])
-      .then(() => {
-        logger.info('Manual scraping completed');
-      })
-      .catch((error) => {
-        logger.error('Manual scraping failed:', error);
-      });
-    
-    res.json({ message: 'Scraping started', sites: sites || ['indeed', 'linkedin', 'seek', 'glassdoor'] });
+    scrapeAllSites(['jora'])
+      .then(() => { logger.info('Manual scraping completed (Jora)'); })
+      .catch((error) => { logger.error('Manual scraping failed:', error); });
+    res.json({ message: 'Scraping started', sites: ['jora'] });
     
   } catch (error) {
     logger.error('Error triggering scraping:', error);

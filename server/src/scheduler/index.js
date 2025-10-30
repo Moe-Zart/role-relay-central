@@ -17,12 +17,11 @@ export function startScrapingScheduler() {
     timezone: "Australia/Sydney"
   });
 
-  // Schedule a lighter scraping job every 2 hours (fewer pages)
+  // Schedule a lighter scraping job every 2 hours (Jora only)
   cron.schedule('0 */2 * * *', async () => {
-    logger.info('Starting light scraping job');
+    logger.info('Starting light scraping job (Jora)');
     try {
-      // Scrape with fewer pages to avoid overwhelming the sites
-      const results = await scrapeAllSites(['indeed', 'seek']); // Only scrape Indeed and Seek more frequently
+      const results = await scrapeAllSites(['jora']);
       logger.info('Light scraping completed:', results);
     } catch (error) {
       logger.error('Light scraping failed:', error);
@@ -32,5 +31,5 @@ export function startScrapingScheduler() {
     timezone: "Australia/Sydney"
   });
 
-  logger.info('Scraping scheduler started - Full scraping every 6 hours, light scraping every 2 hours');
+  logger.info('Scraping scheduler started - Full scraping every 6 hours (Jora), light scraping every 2 hours (Jora)');
 }
