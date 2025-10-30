@@ -4,7 +4,6 @@ import pdfParse from 'pdf-parse';
 import keywordExtractor from 'keyword-extractor';
 import nlp from 'compromise';
 import { getDatabase } from '../database/init.js';
-import { scoreResumeAgainstJobs, llmContextualJobFitScore, formatResumeReverseChronological, atsEnhanceResume } from '../services/intelligentJobMatcher.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -73,89 +72,14 @@ router.post('/extract-keywords', async (req, res) => {
   }
 });
 
-// POST /api/v1/resume/match-jobs
-router.post('/match-jobs', async (req, res) => {
-  try {
-    const { text, limit = 10 } = req.body;
-    if (!text) return res.status(400).json({ error: 'No resume text provided' });
-    // Fetch jobs
-    const db = getDatabase();
-    const jobs = await new Promise((resolve, reject) => {
-      db.all('SELECT * FROM jobs ORDER BY posted_at DESC LIMIT 100', (err, rows) => {
-        if (err) reject(err); else resolve(rows);
-      });
-    });
-    // Run semantic similarity scoring
-    const ranked = scoreResumeAgainstJobs(text, jobs).slice(0, limit);
-    res.json({ matches: ranked });
-  } catch (error) {
-    console.error('Job match error:', error);
-    res.status(500).json({ error: 'Failed to match jobs to resume' });
-  }
-});
+// Removed AI-based matching; search now works over pre-scraped jobs only
 
-// POST /api/v1/resume/llm-job-fit
-router.post('/llm-job-fit', async (req, res) => {
-  try {
-    const { resumeText, jobText } = req.body;
-    if (!resumeText || !jobText) return res.status(400).json({ error: 'resumeText and jobText are required' });
-    const score = await llmContextualJobFitScore(resumeText, jobText);
-    res.json({ score, note: 'This is a demo value. Replace with actual LLM API call for production.' });
-  } catch (error) {
-    console.error('LLM job fit error:', error);
-    res.status(500).json({ error: 'Failed to compute LLM job fit score' });
-  }
-});
+// Removed LLM contextual job fit endpoint
 
-// POST /api/v1/resume/optimize
-router.post('/optimize', async (req, res) => {
-  try {
-    const { text } = req.body;
-    if (!text) return res.status(400).json({ error: 'No resume text provided' });
-    const formatted = formatResumeReverseChronological(text);
-    res.json({ formatted });
-  } catch (error) {
-    console.error('Resume optimize error:', error);
-    res.status(500).json({ error: 'Failed to optimize resume' });
-  }
-});
+// Keep /optimize only if needed. Otherwise, disable advanced features
 
-// POST /api/v1/resume/ats-enhance
-router.post('/ats-enhance', async (req, res) => {
-  try {
-    const { resumeText, jobText } = req.body;
-    if (!resumeText || !jobText) return res.status(400).json({ error: 'resumeText and jobText are required' });
-    const enhancement = atsEnhanceResume(resumeText, jobText);
-    res.json(enhancement);
-  } catch (error) {
-    console.error('ATS enhancement error:', error);
-    res.status(500).json({ error: 'Failed to enhance resume for ATS' });
-  }
-});
+// Removed ATS enhancement endpoint to simplify flow
 
-// POST /api/v1/resume/rank-matches
-router.post('/rank-matches', async (req, res) => {
-  try {
-    const { text, limit = 10, useLLM = false } = req.body;
-    if (!text) return res.status(400).json({ error: 'No resume text provided' });
-    const db = getDatabase();
-    const jobs = await new Promise((resolve, reject) => {
-      db.all('SELECT * FROM jobs ORDER BY posted_at DESC LIMIT 100', (err, rows) => {
-        if (err) reject(err); else resolve(rows);
-      });
-    });
-    let ranked = scoreResumeAgainstJobs(text, jobs);
-    // Optionally, if useLLM=true, supplement score with LLM score
-    if (useLLM) {
-      const llmScores = await Promise.all(ranked.map(r => llmContextualJobFitScore(text, r.job.description_full || r.job.descriptionSnippet || "")));
-      ranked = ranked.map((r,i)=> ({ ...r, llmScore: llmScores[i], aggregateScore: 0.7*r.score + 0.3*llmScores[i] }))
-                .sort((a,b)=>b.aggregateScore - a.aggregateScore);
-    }
-    res.json({ matches: ranked.slice(0, limit) });
-  } catch (error) {
-    console.error('Rank matches error:', error);
-    res.status(500).json({ error: 'Failed to rank job matches' });
-  }
-});
+// Removed rank-matches endpoint
 
 export default router;

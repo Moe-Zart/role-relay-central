@@ -7,7 +7,8 @@ import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { initDatabase } from './database/init.js';
 import routes from './routes/index.js';
-import { startScrapingScheduler } from './scheduler/index.js';
+// import { startScrapingScheduler } from './scheduler/index.js';
+import { scrapeAllSites } from './scrapers/scrapeAll.js';
 import logger from './utils/logger.js';
 
 dotenv.config();
@@ -75,9 +76,14 @@ async function startServer() {
     app.use(routes);
     logger.info('Routes setup successfully');
     
-    // Start scraping scheduler
-    startScrapingScheduler();
-    logger.info('Scraping scheduler started');
+    // One-time scrape on server start (Jora, IT-only)
+    try {
+      logger.info('Starting one-time scrape on server boot (Jora)');
+      await scrapeAllSites(['jora']);
+      logger.info('One-time scrape completed');
+    } catch (e) {
+      logger.error('One-time scrape failed', e);
+    }
     
     const server = createServer(app);
     
