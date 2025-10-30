@@ -219,3 +219,36 @@ export async function llmContextualJobFitScore(resumeText, jobText) {
   // Demo: return a random score
   return Math.round(Math.random() * 100) / 100;
 }
+
+/**
+ * Extract job/education timeline and produce reverse-chronological string for the resume
+ * @param {string} text resume text
+ * @returns {string} resume in reverse-chronological format
+ */
+export function formatResumeReverseChronological(text) {
+  // Find lines that look like experience (simple regex for year/role separator)
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  // e.g. 'Software Engineer at XYZ Corp, 2022-2024'
+  const expRegex = /(.+?)\s*(at|@)\s*(.+?),?\s*(\d{4})\s*[-–]?\s*(\d{4}|present|now)?/i;
+  const experiences = [];
+  for (const line of lines) {
+    const match = line.match(expRegex);
+    if (match) {
+      experiences.push({
+        role: match[1].trim(),
+        company: match[3].trim(),
+        start: parseInt(match[4]),
+        end: match[5] && match[5].toLowerCase() !== 'present' && match[5].toLowerCase() !== 'now' ? parseInt(match[5]) : 9999,
+        raw: line.trim()
+      });
+    }
+  }
+  // Sort by end year descending (or start if no end)
+  experiences.sort((a, b) => (b.end || b.start) - (a.end || a.start));
+  // Return formatted string of experiences, then rest of resume
+  const formatted = experiences.map(e => e.raw).join('\n');
+  // Add unclassified blocks after
+  const expLines = new Set(experiences.map(e => e.raw));
+  const remainder = lines.filter(line => !expLines.has(line)).join('\n');
+  return formatted + (remainder ? '\n\n' + remainder : '');
+}

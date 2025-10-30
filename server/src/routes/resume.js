@@ -4,7 +4,7 @@ import pdfParse from 'pdf-parse';
 import keywordExtractor from 'keyword-extractor';
 import nlp from 'compromise';
 import { getDatabase } from '../database/init.js';
-import { scoreResumeAgainstJobs, llmContextualJobFitScore } from '../services/intelligentJobMatcher.js';
+import { scoreResumeAgainstJobs, llmContextualJobFitScore, formatResumeReverseChronological } from '../services/intelligentJobMatcher.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -104,6 +104,19 @@ router.post('/llm-job-fit', async (req, res) => {
   } catch (error) {
     console.error('LLM job fit error:', error);
     res.status(500).json({ error: 'Failed to compute LLM job fit score' });
+  }
+});
+
+// POST /api/v1/resume/optimize
+router.post('/optimize', async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) return res.status(400).json({ error: 'No resume text provided' });
+    const formatted = formatResumeReverseChronological(text);
+    res.json({ formatted });
+  } catch (error) {
+    console.error('Resume optimize error:', error);
+    res.status(500).json({ error: 'Failed to optimize resume' });
   }
 });
 
