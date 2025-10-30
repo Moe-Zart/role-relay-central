@@ -1,12 +1,14 @@
 import express from 'express';
 import jobsRouter from './jobs.js';
 import onDemandScrapingRoutes from './on-demand-scraping.js';
+import resumeRouter from './resume.js';
 
 const router = express.Router();
 
 // API version prefix
 router.use('/api/v1', jobsRouter);
 router.use('/api/v1/scraping', onDemandScrapingRoutes);
+router.use('/api/v1/resume', resumeRouter);
 
 // Root endpoint
 router.get('/', (req, res) => {
