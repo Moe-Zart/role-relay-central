@@ -202,3 +202,20 @@ export function scoreResumeAgainstJobs(resumeText, jobs) {
   // Sort by score, descending
   return jobScores.sort((a,b)=>b.score-a.score);
 }
+
+// --- LLM-Based Contextual Job Fit Scoring ---
+/**
+ * Evaluate contextual job fit between a resume and job description using LLM
+ * @param {string} resumeText - Resume text
+ * @param {string} jobText - Job description
+ * @returns {Promise<number>} score from 0 (worst) to 1 (perfect fit)
+ */
+export async function llmContextualJobFitScore(resumeText, jobText) {
+  // Placeholder for actual LLM/API integration
+  // Example for OpenAI in future:
+  // const completion = await openai.createCompletion({ ... })
+  // return parseFloat(completion.data.choices[0].text);
+
+  // Demo: return a random score
+  return Math.round(Math.random() * 100) / 100;
+}
