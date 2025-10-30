@@ -129,18 +129,50 @@ export class JoraScraper {
         timeout: 20000
       });
       const $ = load(res.data);
-      let link = '';
+
+      // 1) Look for explicit "Apply on company site" link text
+      const applyTextSelectors = [
+        'a:contains("Apply on company site")',
+        'a:contains("Apply on employer website")',
+        'a:contains("Apply on company website")',
+        'a:contains("Apply on employer site")',
+        'a:contains("Company site")',
+        'a:contains("Employer site")'
+      ];
+      for (const sel of applyTextSelectors) {
+        const el = $(sel).first();
+        if (el && el.attr('href')) {
+          const href = el.attr('href');
+          if (href && !href.toLowerCase().includes('jora.com')) return href;
+        }
+      }
+
+      // 2) Some pages may have a primary apply button wrapping an anchor
+      const buttonCandidates = [
+        'a[data-automation="apply-button"]',
+        'a[aria-label*="company"]',
+        'a[href*="apply"]',
+        'a[target="_blank"]'
+      ];
+      for (const sel of buttonCandidates) {
+        const el = $(sel).first();
+        if (el && el.attr('href')) {
+          const href = el.attr('href');
+          if (href && !href.toLowerCase().includes('jora.com')) return href;
+        }
+      }
+
+      // 3) Fallback: first external non-Jora link on page
+      let fallback = '';
       $('a[href^="http"]').each((_, a) => {
         const href = $(a).attr('href') || '';
-        const lower = href.toLowerCase();
         if (!href) return;
-        // Skip Jora/self and typical tracking/apply redirectors if detected
-        if (lower.includes('jora') || lower.includes('google') || lower.includes('doubleclick')) return;
-        // Prefer employer/apply or company links
-        link = href;
-        return false; // break
+        const lower = href.toLowerCase();
+        if (lower.includes('jora.com')) return;
+        fallback = href;
+        return false;
       });
-      return link || null;
+      return fallback || null;
     } catch (e) {
       return null;
     }
