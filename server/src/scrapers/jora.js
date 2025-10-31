@@ -9,26 +9,23 @@ export class JoraScraper {
     this.searchUrl = 'https://au.jora.com/jobs';
   }
 
-  async scrapeJobs(searchTerms = [
-    // Compact, high-coverage IT buzzwords
-    'developer','software engineer','frontend','backend','full stack',
-    'data','devops','security','support','cloud'
-  ], maxPages = 1) {
+  async scrapeJobs(
+    query = 'developer OR engineer OR programmer OR software OR full stack OR frontend OR backend OR data OR analytics OR cloud OR cybersecurity OR designer OR IT',
+    maxPages = 3
+  ) {
     const jobs = [];
     const seen = new Set();
     try {
-      for (const term of searchTerms) {
-        for (let page = 1; page <= maxPages; page++) {
-          const pageJobs = await this.scrapePage(term, page);
-          for (const j of pageJobs) {
-            const key = j.sources?.[0]?.externalId || j.sources?.[0]?.url || j.title + j.company;
-            if (!seen.has(key)) {
-              seen.add(key);
-              jobs.push(j);
-            }
+      for (let page = 1; page <= maxPages; page++) {
+        const pageJobs = await this.scrapePage(query, page);
+        for (const j of pageJobs) {
+          const key = j.sources?.[0]?.externalId || j.sources?.[0]?.url || (j.title + j.company);
+          if (!seen.has(key)) {
+            seen.add(key);
+            jobs.push(j);
           }
-          await this.delay(1000);
         }
+        await this.delay(1000);
       }
       logger.info(`Jora: collected ${jobs.length} jobs`);
       return jobs;
