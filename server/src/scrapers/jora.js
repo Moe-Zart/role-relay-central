@@ -10,23 +10,24 @@ export class JoraScraper {
   }
 
   async scrapeJobs(searchTerms = [
-    'software engineer','developer','software developer','web developer','frontend','backend','full stack','typescript','javascript','react','node',
-    'data','data engineer','data analyst','data scientist','etl','sql','python',
-    'devops','sre','platform','cloud','aws','azure','gcp',
-    'cyber','security','soc','siem','penetration tester','iam',
-    'qa','test engineer','automation',
-    'support','helpdesk','service desk','it support','desktop support',
-    'systems administrator','network engineer','infrastructure','site reliability',
-    'mobile','ios','android','flutter','react native',
-    'product manager','scrum master','agile','ba','business analyst'
-  ], maxPages = 2) {
+    // Compact, high-coverage IT buzzwords
+    'developer','software engineer','frontend','backend','full stack',
+    'data','devops','security','support','cloud'
+  ], maxPages = 1) {
     const jobs = [];
+    const seen = new Set();
     try {
       for (const term of searchTerms) {
         for (let page = 1; page <= maxPages; page++) {
           const pageJobs = await this.scrapePage(term, page);
-          jobs.push(...pageJobs);
-          await this.delay(1500);
+          for (const j of pageJobs) {
+            const key = j.sources?.[0]?.externalId || j.sources?.[0]?.url || j.title + j.company;
+            if (!seen.has(key)) {
+              seen.add(key);
+              jobs.push(j);
+            }
+          }
+          await this.delay(1000);
         }
       }
       logger.info(`Jora: collected ${jobs.length} jobs`);
