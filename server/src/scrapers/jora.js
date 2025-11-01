@@ -27,12 +27,36 @@ export class JoraScraper {
         logger.info(`Jora: Scraping EXACT URL (page ${page}): ${url}`);
         const pageJobs = await this.scrapeExactUrlPage(url);
         
-        // Add ALL jobs from the page - no filtering
+        // Add ALL jobs from the page - no filtering, with improved deduplication
         for (const job of pageJobs) {
-          const key = job.sources?.[0]?.externalId || job.sources?.[0]?.url || (job.title + job.company);
+          // Create a more robust deduplication key
+          // Priority: URL > externalId > normalized title+company
+          const jobUrl = job.sources?.[0]?.url || '';
+          const externalId = job.sources?.[0]?.externalId || '';
+          const normalizedTitle = (job.title || '').toLowerCase().trim().replace(/\s+/g, ' ');
+          const normalizedCompany = (job.company || '').toLowerCase().trim().replace(/\s+/g, ' ');
+          
+          // Use URL as primary key if available (most reliable)
+          // Fallback to externalId, then normalized title+company
+          let key = '';
+          if (jobUrl) {
+            // Extract the job ID from URL or use full URL
+            const urlMatch = jobUrl.match(/job\/(\d+)|jk=([A-Za-z0-9]+)/);
+            key = urlMatch ? (urlMatch[1] || urlMatch[2]) : jobUrl;
+          } else if (externalId) {
+            key = externalId;
+          } else {
+            key = `${normalizedTitle}|${normalizedCompany}`;
+          }
+          
+          // Normalize the key (lowercase, remove extra spaces)
+          key = key.toLowerCase().trim();
+          
           if (!seen.has(key)) {
             seen.add(key);
             jobs.push(job);
+          } else {
+            logger.debug(`Jora: Skipping duplicate job: ${job.title} at ${job.company} (key: ${key})`);
           }
         }
         
@@ -227,12 +251,60 @@ export class JoraScraper {
     const db = getDatabase();
     const exec = (sql) => new Promise((resolve, reject) => db.exec(sql, (err) => err ? reject(err) : resolve()));
     const run = (sql, params) => new Promise((resolve, reject) => db.run(sql, params, function(err){ err ? reject(err) : resolve(this.lastID); }));
+    const get = (sql, params) => new Promise((resolve, reject) => db.get(sql, params, (err, row) => err ? reject(err) : resolve(row)));
 
     try {
       await exec('BEGIN');
+      let savedCount = 0;
+      let duplicateCount = 0;
+      
       for (const job of jobs) {
         try {
-          const jobId = `jora_${job.sources[0].externalId}`;
+          // Create a reliable job ID from URL or externalId
+          const jobUrl = job.sources?.[0]?.url || '';
+          const externalId = job.sources?.[0]?.externalId || '';
+          
+          let jobId = '';
+          if (jobUrl) {
+            // Extract job ID from URL
+            const urlMatch = jobUrl.match(/job\/(\d+)|jk=([A-Za-z0-9]+)/);
+            if (urlMatch) {
+              jobId = `jora_${urlMatch[1] || urlMatch[2]}`;
+            } else {
+              // Use hash of URL as fallback
+              jobId = `jora_${Buffer.from(jobUrl).toString('base64').slice(0, 20).replace(/[^a-zA-Z0-9]/g, '')}`;
+            }
+          } else if (externalId) {
+            jobId = `jora_${externalId}`;
+          } else {
+            // Fallback: use normalized title+company hash
+            const normalized = `${(job.title || '').toLowerCase().trim()}_${(job.company || '').toLowerCase().trim()}`;
+            jobId = `jora_${Buffer.from(normalized).toString('base64').slice(0, 20).replace(/[^a-zA-Z0-9]/g, '')}`;
+          }
+          
+          // Check if job already exists by URL (most reliable check)
+          let existingJob = null;
+          if (jobUrl) {
+            existingJob = await get(`
+              SELECT j.id FROM jobs j
+              INNER JOIN job_sources js ON j.id = js.job_id
+              WHERE js.url = ?
+              LIMIT 1
+            `, [jobUrl]);
+          }
+          
+          // Also check by job ID as backup
+          if (!existingJob) {
+            existingJob = await get(`SELECT id FROM jobs WHERE id = ?`, [jobId]);
+          }
+          
+          if (existingJob) {
+            duplicateCount++;
+            logger.debug(`Jora: Skipping duplicate job in database: ${job.title} at ${job.company} (ID: ${jobId})`);
+            continue;
+          }
+          
+          // Insert new job
           await run(`
             INSERT OR REPLACE INTO jobs (
               id, title, company, location, work_mode, category, experience,
@@ -254,9 +326,11 @@ export class JoraScraper {
             job.postedAt,
             new Date().toISOString()
           ]);
+          
+          // Insert job sources
           for (const source of job.sources) {
             await run(`
-              INSERT OR REPLACE INTO job_sources (
+              INSERT OR IGNORE INTO job_sources (
                 job_id, site, url, posted_at, external_id
               ) VALUES (?, ?, ?, ?, ?)
             `, [
@@ -267,6 +341,8 @@ export class JoraScraper {
               source.externalId
             ]);
           }
+          
+          savedCount++;
         } catch (e) {
           if (e && e.code === 'SQLITE_BUSY') {
             await this.delay(200);
@@ -275,7 +351,9 @@ export class JoraScraper {
           }
         }
       }
+      
       await exec('COMMIT');
+      logger.info(`Jora: Saved ${savedCount} new jobs, skipped ${duplicateCount} duplicates`);
     } catch (txErr) {
       try { await exec('ROLLBACK'); } catch(_) {}
       logger.error('Jora: transaction failed', txErr);
