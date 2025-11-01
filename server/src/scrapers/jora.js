@@ -49,28 +49,78 @@ export class JoraScraper {
     logger.info(`Jora: GET ${url}`);
     const res = await axios.get(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5'
       },
       timeout: 20000
     });
     const $ = load(res.data);
 
+    // Try multiple selector strategies for Jora's job listings
+    const jobSelectors = [
+      '[data-automation="job-card"]',
+      '[data-automation="job-list"] [data-automation="job-card"]',
+      '.job-card',
+      '.job-item',
+      'article[data-testid="job-card"]',
+      'div[class*="job"]',
+      'a[href*="/job/"]'
+    ];
+
+    let jobElements = [];
+    for (const selector of jobSelectors) {
+      jobElements = $(selector).toArray();
+      if (jobElements.length > 0) {
+        logger.info(`Jora: Found ${jobElements.length} jobs using selector: ${selector}`);
+        break;
+      }
+    }
+
+    if (jobElements.length === 0) {
+      logger.warn(`Jora: No jobs found on page ${pageNumber}. HTML length: ${res.data.length}`);
+      // Log a sample of the HTML for debugging
+      logger.debug(`Jora: HTML sample (first 500 chars): ${res.data.substring(0, 500)}`);
+      return [];
+    }
+
     const results = [];
-    $('[data-automation="job-list"] [data-automation="job-card"], .job-card, article').each((i, el) => {
+    jobElements.forEach((el, i) => {
       try {
-        const titleEl = $(el).find('[data-automation="job-title"], a.job-title, h2 a').first();
-        const companyEl = $(el).find('[data-automation="job-company"], .job-company, .company, .job-organisation').first();
-        const locationEl = $(el).find('[data-automation="job-location"], .job-location, .location').first();
-        const descEl = $(el).find('[data-automation="job-short-description"], .job-abstract, .job-snippet, .job-description').first();
-        const postedEl = $(el).find('[data-automation="job-date"], .job-listed-date, time').first();
+        const $el = $(el);
+        // Try multiple ways to find the job title/link
+        let titleEl = $el.find('[data-automation="job-title"]').first();
+        if (!titleEl.length) titleEl = $el.find('a[href*="/job/"]').first();
+        if (!titleEl.length) titleEl = $el.find('h2 a, h3 a, .title a').first();
+        if (!titleEl.length) titleEl = $el.find('a').first();
 
         const title = titleEl.text().trim();
-        if (!title) return;
-        const company = companyEl.text().trim() || 'Unknown';
-        const location = locationEl.text().trim() || '';
-        const description = descEl.text().trim() || '';
+        if (!title) {
+          logger.debug(`Jora: Skipping job ${i} - no title found`);
+          return;
+        }
+
         const href = titleEl.attr('href') || '';
-        const jobUrl = href.startsWith('http') ? href : this.baseUrl + href;
+        const jobUrl = href.startsWith('http') ? href : (href ? this.baseUrl + href : '');
+
+        // Try multiple selectors for company
+        let companyEl = $el.find('[data-automation="job-company"]').first();
+        if (!companyEl.length) companyEl = $el.find('.job-company, .company, .employer, [class*="company"]').first();
+        const company = companyEl.text().trim() || 'Unknown';
+
+        // Try multiple selectors for location
+        let locationEl = $el.find('[data-automation="job-location"]').first();
+        if (!locationEl.length) locationEl = $el.find('.job-location, .location, [class*="location"]').first();
+        const location = locationEl.text().trim() || '';
+
+        // Try multiple selectors for description
+        let descEl = $el.find('[data-automation="job-short-description"]').first();
+        if (!descEl.length) descEl = $el.find('.job-abstract, .job-snippet, .job-description, .description').first();
+        const description = descEl.text().trim() || '';
+
+        // Try multiple selectors for posted date
+        let postedEl = $el.find('[data-automation="job-date"]').first();
+        if (!postedEl.length) postedEl = $el.find('.job-listed-date, time, .date').first();
         const postedText = postedEl.text().trim();
 
         const externalIdMatch = jobUrl.match(/job\/(\d+)|jk=([A-Za-z0-9]+)/);
