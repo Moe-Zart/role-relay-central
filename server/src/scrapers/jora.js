@@ -41,10 +41,18 @@ export class JoraScraper {
         
         logger.info(`Jora: Found ${pageJobs.length} jobs on page ${page}`);
         
-        // Log sample job URLs from this page for debugging
+        // Log detailed job info from this page for verification
         if (pageJobs.length > 0) {
-          const sampleUrls = pageJobs.slice(0, 3).map(j => j.sources?.[0]?.url || 'no-url').join(', ');
-          logger.info(`Jora: Sample job URLs from page ${page}: ${sampleUrls}`);
+          logger.info(`Jora: === PAGE ${page} JOBS (First 5) ===`);
+          pageJobs.slice(0, 5).forEach((job, idx) => {
+            const jobUrl = job.sources?.[0]?.url || 'no-url';
+            const externalId = job.sources?.[0]?.externalId || 'no-id';
+            // Extract hash for verification
+            const hashMatch = jobUrl.match(/-([a-f0-9]{32})(?:\?|$)/);
+            const extractedHash = hashMatch ? hashMatch[1] : 'no-hash';
+            logger.info(`Jora: Page ${page}, Job ${idx + 1}: "${job.title}" at ${job.company} | URL: ${jobUrl.split('?')[0]} | Hash: ${extractedHash} | ExternalID: ${externalId}`);
+          });
+          logger.info(`Jora: === END PAGE ${page} JOBS ===`);
         }
         
         let addedThisPage = 0;
@@ -60,23 +68,24 @@ export class JoraScraper {
           const normalizedCompany = (job.company || '').toLowerCase().trim().replace(/\s+/g, ' ');
           
           // Use URL as primary key if available (most reliable)
-          // Extract job ID from URL pattern: /job/Job-Title-hash123... or jk=abc123
+          // Extract job hash from URL pattern: /job/Job-Title-hash32chars
           // Jora uses format: /job/Job-Title-ef0bff38847e6c5e0993739857d4f106
           let key = '';
           if (jobUrl) {
-            // Extract the job hash from URL - it's the last segment after the last dash
-            // Pattern: /job/Job-Title-abc123def456... -> extract abc123def456...
-            const urlMatch = jobUrl.match(/\/job\/[^-]+-([a-f0-9]{32})|jk=([A-Za-z0-9]+)/);
-            if (urlMatch) {
-              // The hash is the unique identifier (32 hex chars after the last dash)
-              key = (urlMatch[1] || urlMatch[2] || '').toLowerCase();
+            // Extract the 32-char hash from URL (everything after last dash before query params)
+            // Pattern: /job/anything-hash32chars -> extract hash32chars
+            const hashMatch = jobUrl.match(/-([a-f0-9]{32})(?:\?|$)/);
+            if (hashMatch) {
+              // The hash is the unique identifier (32 hex chars)
+              key = hashMatch[1].toLowerCase();
             } else {
               // Fallback: extract everything after last dash in the job path
-              const pathMatch = jobUrl.match(/\/job\/[^-]+-([a-zA-Z0-9]+)/);
-              if (pathMatch) {
+              const pathMatch = jobUrl.match(/\/job\/[^?]+-([a-zA-Z0-9]+)(?:\?|$)/);
+              if (pathMatch && pathMatch[1].length >= 16) {
+                // If we got something that looks like a hash (at least 16 chars), use it
                 key = pathMatch[1].toLowerCase();
               } else {
-                // Use normalized URL without query params as fallback
+                // Use base URL path without query params as fallback
                 const urlWithoutParams = jobUrl.split('?')[0].toLowerCase().trim();
                 key = urlWithoutParams;
               }
@@ -271,8 +280,26 @@ export class JoraScraper {
         if (!postedEl.length) postedEl = $el.find('.job-listed-date, time, .date').first();
         const postedText = postedEl.text().trim();
 
-        const externalIdMatch = jobUrl.match(/job\/(\d+)|jk=([A-Za-z0-9]+)/);
-        const externalId = (externalIdMatch && (externalIdMatch[1] || externalIdMatch[2])) || `jora_${Date.now()}_${i}`;
+        // Extract hash from Jora URL format: /job/Job-Title-hash32chars
+        // The hash is the last segment after the final dash (32 hex characters)
+        let externalId = null;
+        if (jobUrl) {
+          // Match: /job/anything-hash where hash is 32 hex chars at the end
+          const hashMatch = jobUrl.match(/-([a-f0-9]{32})(?:\?|$)/);
+          if (hashMatch) {
+            externalId = hashMatch[1];
+          } else {
+            // Fallback: extract everything after last dash
+            const pathMatch = jobUrl.match(/\/job\/[^?]+-([a-zA-Z0-9]+)/);
+            if (pathMatch) {
+              externalId = pathMatch[1];
+            } else {
+              externalId = `jora_${Date.now()}_${i}`;
+            }
+          }
+        } else {
+          externalId = `jora_${Date.now()}_${i}`;
+        }
 
         const postedAt = new Date().toISOString();
 
@@ -342,14 +369,16 @@ export class JoraScraper {
           let jobId = '';
           if (jobUrl) {
             // Extract job hash from URL - Jora format: /job/Job-Title-ef0bff38847e6c5e0993739857d4f106
-            const urlMatch = jobUrl.match(/\/job\/[^-]+-([a-f0-9]{32})|jk=([A-Za-z0-9]+)/);
-            if (urlMatch) {
+            // The hash is 32 hex characters after the last dash
+            const hashMatch = jobUrl.match(/-([a-f0-9]{32})(?:\?|$)/);
+            if (hashMatch) {
               // Use the 32-char hash as the unique identifier
-              jobId = `jora_${urlMatch[1] || urlMatch[2]}`;
+              jobId = `jora_${hashMatch[1]}`;
             } else {
-              // Fallback: extract everything after last dash
-              const pathMatch = jobUrl.match(/\/job\/[^-]+-([a-zA-Z0-9]+)/);
-              if (pathMatch) {
+              // Fallback: extract everything after last dash in path
+              const pathMatch = jobUrl.match(/\/job\/[^?]+-([a-zA-Z0-9]+)(?:\?|$)/);
+              if (pathMatch && pathMatch[1].length >= 16) {
+                // If we got something that looks like a hash, use it
                 jobId = `jora_${pathMatch[1]}`;
               } else {
                 // Use hash of base URL path as fallback
@@ -363,6 +392,8 @@ export class JoraScraper {
             const normalized = `${(job.title || '').toLowerCase().trim()}_${(job.company || '').toLowerCase().trim()}`;
             jobId = `jora_${Buffer.from(normalized).toString('base64').slice(0, 20).replace(/[^a-zA-Z0-9]/g, '')}`;
           }
+          
+          logger.debug(`Jora: Processing job "${job.title}" - Extracted hash from URL, jobId: ${jobId}, basePath: ${baseUrlPath}`);
           
           // Check if job already exists by base URL path (without query params)
           // This ensures the same job from different pages is detected as a duplicate
