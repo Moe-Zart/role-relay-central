@@ -9,7 +9,7 @@ export class JoraScraper {
   }
 
   // Scrape using EXACT URL provided by user - no modifications
-  async scrapeWithExactUrl(location = 'Sydney NSW', maxPages = 10) {
+  async scrapeWithExactUrl(location = 'Sydney NSW', maxPages = 5) {
     const jobs = [];
     const seen = new Set();
     
@@ -92,6 +92,15 @@ export class JoraScraper {
         // If all jobs on this page were duplicates, might have reached the end of unique results
         if (pageJobs.length > 0 && addedThisPage === 0) {
           logger.warn(`Jora: Page ${page} had ${pageJobs.length} jobs but all were duplicates. May have reached end of unique results.`);
+          
+          // If we get 2 consecutive pages with all duplicates, pagination might be broken
+          // Check if previous page also had all duplicates
+          if (page > 2 && pageJobs.length >= 10) {
+            // Sample the first job URL from this page and previous page to verify
+            const currentPageFirstUrl = pageJobs[0]?.sources?.[0]?.url || '';
+            logger.warn(`Jora: Suspicious - page ${page} returned ${pageJobs.length} jobs but all duplicates. First job URL: ${currentPageFirstUrl}`);
+            logger.warn(`Jora: This might indicate pagination is broken and returning the same page repeatedly.`);
+          }
         }
         
         await this.delay(1000);
