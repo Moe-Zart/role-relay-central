@@ -9,13 +9,16 @@ export class JoraScraper {
   }
 
   // Scrape using EXACT URL provided by user - no modifications
-  async scrapeWithExactUrl(location = 'Sydney NSW', maxPages = 3) {
+  async scrapeWithExactUrl(location = 'Sydney NSW', maxPages = 10) {
     const jobs = [];
     const seen = new Set();
     
     try {
       // Use the EXACT URL as provided - no keyword manipulation
+      // This URL searches for: developer, programmer, software engineer, frontend, backend, data, analyst, cloud, cybersecurity, web, IT
       const exactBaseUrl = 'https://au.jora.com/j?a=14d&disallow=true&l=Sydney+NSW&q=%22developer%22+OR+%22programmer%22+OR+%22software+engineer%22+OR+%22frontend%22+OR+%22backend%22+OR+%22data%22+OR+%22analyst%22+OR+%22cloud%22+OR+%22cybersecurity%22+OR+%22web%22+OR+%22IT%22&sa=70000&sp=facet_listed_date';
+      
+      logger.info(`Jora: Using EXACT URL with all search terms: developer, programmer, software engineer, frontend, backend, data, analyst, cloud, cybersecurity, web, IT`);
       
       for (let page = 1; page <= maxPages; page++) {
         // Add pagination only if needed
@@ -33,10 +36,16 @@ export class JoraScraper {
           }
         }
         
+        // If we got fewer jobs than expected, we might have reached the end
+        if (pageJobs.length === 0) {
+          logger.info(`Jora: No jobs found on page ${page}, stopping pagination`);
+          break;
+        }
+        
         await this.delay(1000);
       }
       
-      logger.info(`Jora: Collected ${jobs.length} jobs from exact URL (no filtering)`);
+      logger.info(`Jora: Collected ${jobs.length} jobs from exact URL (no filtering, all job types)`);
       return jobs;
     } catch (err) {
       logger.error('Jora scrape with exact URL failed:', err);
