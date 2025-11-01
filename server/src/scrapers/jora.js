@@ -21,9 +21,20 @@ export class JoraScraper {
       logger.info(`Jora: Using EXACT URL with all search terms: developer, programmer, software engineer, frontend, backend, data, analyst, cloud, cybersecurity, web, IT`);
       
       for (let page = 1; page <= maxPages; page++) {
-        // Add pagination parameter - Jora uses pn parameter (try including for page 1 too)
-        // Some sites require pn=1 for page 1, others start from pn=2
-        const url = page === 1 ? exactBaseUrl : `${exactBaseUrl}&pn=${page}`;
+        // Build URL based on Jora's pagination pattern:
+        // Page 1: Base URL as provided
+        // Page 2: sp=search&trigger_source=serp format
+        // Page 3+: p=N parameter with sp=search&trigger_source=serp
+        let url = '';
+        if (page === 1) {
+          url = exactBaseUrl;
+        } else if (page === 2) {
+          // Page 2 uses different format: sp=search&trigger_source=serp&a=14d&q=...&l=...
+          url = `https://au.jora.com/j?sp=search&trigger_source=serp&a=14d&q=%22developer%22+OR+%22programmer%22+OR+%22software+engineer%22+OR+%22frontend%22+OR+%22backend%22+OR+%22data%22+OR+%22analyst%22+OR+%22cloud%22+OR+%22cybersecurity%22+OR+%22web%22+OR+%22IT%22&l=Sydney+NSW`;
+        } else {
+          // Page 3+: Use p=N parameter
+          url = `https://au.jora.com/j?a=14d&disallow=true&l=Sydney+NSW&p=${page}&q=%22developer%22+OR+%22programmer%22+OR+%22software+engineer%22+OR+%22frontend%22+OR+%22backend%22+OR+%22data%22+OR+%22analyst%22+OR+%22cloud%22+OR+%22cybersecurity%22+OR+%22web%22+OR+%22IT%22&sp=search&surl=0&trigger_source=serp`;
+        }
         
         logger.info(`Jora: Scraping page ${page} of ${maxPages}: ${url}`);
         const pageJobs = await this.scrapeExactUrlPage(url);
