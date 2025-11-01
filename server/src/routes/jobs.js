@@ -227,21 +227,23 @@ router.get('/jobs/stats', async (req, res) => {
   }
 });
 
-// Get scraping logs
+// Get scraping logs (Jora only - filter out old entries from other sites)
 router.get('/scraping/logs', async (req, res) => {
   try {
     const db = getDatabase();
     const { limit = 50 } = req.query;
     
+    // Only return logs for Jora scraping (ignore old Indeed, Seek, LinkedIn, Glassdoor entries)
     const logs = await new Promise((resolve, reject) => {
       db.all(`
         SELECT *
         FROM scraping_logs
+        WHERE site = 'jora' OR site IS NULL OR site = ''
         ORDER BY started_at DESC
         LIMIT ?
       `, [parseInt(limit)], (err, rows) => {
         if (err) reject(err);
-        else resolve(rows);
+        else resolve(rows || []);
       });
     });
     
@@ -256,7 +258,23 @@ router.get('/scraping/logs', async (req, res) => {
 // Trigger manual scraping (Jora only)
 router.post('/scraping/trigger', async (req, res) => {
   try {
-    // Jora is the only supported site now; ignore provided sites
+    // Jora is the only supported site now
+    const { scrapeAllSites } = await import('../scrapers/scrapeAll.js');
+    scrapeAllSites(['jora'])
+      .then(() => { logger.info('Manual scraping completed (Jora)'); })
+      .catch((error) => { logger.error('Manual scraping failed:', error); });
+    res.json({ message: 'Scraping started', sites: ['jora'] });
+    
+  } catch (error) {
+    logger.error('Error triggering scraping:', error);
+    res.status(500).json({ error: 'Failed to trigger scraping' });
+  }
+});
+
+// Also support GET for convenience (though POST is preferred)
+router.get('/scraping/trigger', async (req, res) => {
+  try {
+    // Jora is the only supported site now
     const { scrapeAllSites } = await import('../scrapers/scrapeAll.js');
     scrapeAllSites(['jora'])
       .then(() => { logger.info('Manual scraping completed (Jora)'); })

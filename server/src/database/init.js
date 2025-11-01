@@ -65,7 +65,7 @@ const createTables = async () => {
       CREATE TABLE IF NOT EXISTS job_sources (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         job_id TEXT NOT NULL,
-        site TEXT NOT NULL CHECK (site IN ('LinkedIn', 'Indeed', 'Seek', 'Glassdoor', 'Jora', 'Company', 'Other')),
+        site TEXT NOT NULL CHECK (site IN ('Jora', 'Company', 'Other')),
         url TEXT NOT NULL,
         posted_at TEXT NOT NULL,
         external_id TEXT NOT NULL,

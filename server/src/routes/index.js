@@ -22,7 +22,7 @@ router.get('/', (req, res) => {
       jobById: '/api/v1/jobs/:id',
       jobStats: '/api/v1/jobs/stats',
       scrapingLogs: '/api/v1/scraping/logs',
-      triggerScraping: '/api/v1/scraping/trigger',
+      triggerScraping: 'POST /api/v1/scraping/trigger',
       onDemandScraping: '/api/v1/scraping/scrape-on-demand',
       scrapingStatus: '/api/v1/scraping/scraping-status',
       jobSearch: '/api/v1/scraping/jobs/search'
