@@ -43,15 +43,28 @@ export class JoraScraper {
         
         // Log detailed job info from this page for verification
         if (pageJobs.length > 0) {
-          logger.info(`Jora: === PAGE ${page} JOBS (First 5) ===`);
-          pageJobs.slice(0, 5).forEach((job, idx) => {
+          logger.info(`Jora: === PAGE ${page} JOBS (ALL ${pageJobs.length} jobs) ===`);
+          pageJobs.forEach((job, idx) => {
             const jobUrl = job.sources?.[0]?.url || 'no-url';
             const externalId = job.sources?.[0]?.externalId || 'no-id';
             // Extract hash for verification
             const hashMatch = jobUrl.match(/-([a-f0-9]{32})(?:\?|$)/);
             const extractedHash = hashMatch ? hashMatch[1] : 'no-hash';
-            logger.info(`Jora: Page ${page}, Job ${idx + 1}: "${job.title}" at ${job.company} | URL: ${jobUrl.split('?')[0]} | Hash: ${extractedHash} | ExternalID: ${externalId}`);
+            logger.info(`Jora: Page ${page}, Job ${idx + 1}/${pageJobs.length}: "${job.title}" at ${job.company} | Hash: ${extractedHash}`);
           });
+          
+          // Also log a summary of job types found
+          const jobTypes = pageJobs.map(j => j.title.toLowerCase()).join(' | ');
+          const hasFrontend = jobTypes.includes('frontend');
+          const hasBackend = jobTypes.includes('backend');
+          const hasData = jobTypes.includes('data') || jobTypes.includes('analyst');
+          const hasCloud = jobTypes.includes('cloud');
+          const hasCyber = jobTypes.includes('cyber') || jobTypes.includes('security');
+          const hasWeb = jobTypes.includes('web');
+          const hasIT = jobTypes.includes(' it ') || jobTypes.includes('it ') || /\bit\b/.test(jobTypes);
+          const hasProgrammer = jobTypes.includes('programmer');
+          
+          logger.info(`Jora: Page ${page} Job Type Summary - Frontend: ${hasFrontend}, Backend: ${hasBackend}, Data: ${hasData}, Cloud: ${hasCloud}, Cybersecurity: ${hasCyber}, Web: ${hasWeb}, IT: ${hasIT}, Programmer: ${hasProgrammer}`);
           logger.info(`Jora: === END PAGE ${page} JOBS ===`);
         }
         
@@ -182,22 +195,53 @@ export class JoraScraper {
 
       // Wait for job cards to be visible (ensures JavaScript has loaded)
       try {
-        await page.waitForSelector('.job-card, [data-automation="job-card"]', { timeout: 10000 });
+        await page.waitForSelector('.job-card, [data-automation="job-card"], a[href*="/job/"]', { timeout: 15000 });
       } catch (e) {
         logger.warn(`Jora: Job cards selector not found, continuing anyway`);
       }
 
-      // Wait a bit more for JavaScript to fully render pagination
-      await page.waitForTimeout(3000);
+      // Wait a bit more for JavaScript to fully render
+      await page.waitForTimeout(2000);
       
-      // Scroll down to trigger lazy loading if needed
-      await page.evaluate(() => {
-        window.scrollTo(0, document.body.scrollHeight / 2);
+      // Scroll multiple times to trigger all lazy-loaded jobs
+      // Jora uses lazy loading, so we need to scroll through the page
+      await page.evaluate(async () => {
+        await new Promise((resolve) => {
+          let totalHeight = 0;
+          const distance = 300;
+          const timer = setInterval(() => {
+            const scrollHeight = document.body.scrollHeight;
+            window.scrollBy(0, distance);
+            totalHeight += distance;
+
+            // Stop scrolling if we've reached the bottom or scrolled enough
+            if (totalHeight >= scrollHeight || totalHeight > 5000) {
+              clearInterval(timer);
+              resolve();
+            }
+          }, 200);
+        });
+        
+        // Scroll back to top to ensure all content is in DOM
+        window.scrollTo(0, 0);
       });
-      await page.waitForTimeout(1000);
+
+      // Wait for any animations/lazy loading to complete
+      await page.waitForTimeout(2000);
 
       // Get the page HTML
       const html = await page.content();
+      
+      // Log a sample of job titles found in HTML for debugging
+      const titleMatches = html.match(/<[^>]*data-automation="job-title"[^>]*>([^<]+)<\/[^>]*>/gi) || 
+                          html.match(/<a[^>]*href="[^"]*\/job\/[^"]*"[^>]*>([^<]+)<\/a>/gi);
+      if (titleMatches && titleMatches.length > 0) {
+        const sampleTitles = titleMatches.slice(0, 10).map(m => {
+          const textMatch = m.match(/>([^<]+)</);
+          return textMatch ? textMatch[1].trim() : '';
+        }).filter(t => t).join(', ');
+        logger.info(`Jora: Sample job titles found in HTML (first 10): ${sampleTitles}`);
+      }
       
       await browser.close();
       
@@ -216,22 +260,77 @@ export class JoraScraper {
     const $ = load(html);
 
     // Try multiple selector strategies for Jora's job listings
+    // We want to find ALL job cards, not just the first matching selector
     const jobSelectors = [
       '[data-automation="job-card"]',
       '[data-automation="job-list"] [data-automation="job-card"]',
       '.job-card',
       '.job-item',
       'article[data-testid="job-card"]',
-      'div[class*="job"]',
-      'a[href*="/job/"]'
+      'div[class*="job-card"]',
+      '[class*="JobCard"]',
+      'a[href*="/job/"][href*="-"]'  // More specific: links to job pages with dash (hash format)
     ];
 
+    // Try each selector and accumulate unique job elements
     let jobElements = [];
+    const seenUrls = new Set();
+    
     for (const selector of jobSelectors) {
-      jobElements = $(selector).toArray();
+      const elements = $(selector).toArray();
+      for (const el of elements) {
+        const $el = $(el);
+        // Try to get the job URL from this element
+        let href = $el.attr('href') || $el.find('a[href*="/job/"]').first().attr('href') || '';
+        if (href) {
+          const jobUrl = href.startsWith('http') ? href : (href ? this.baseUrl + href : '');
+          // Only add if we haven't seen this URL before and it looks like a valid job URL
+          if (jobUrl && jobUrl.includes('/job/') && !seenUrls.has(jobUrl.split('?')[0])) {
+            seenUrls.add(jobUrl.split('?')[0]);
+            jobElements.push(el);
+          }
+        } else if (!href) {
+          // If no href but matches selector, might be a wrapper - check for nested links
+          const nestedLink = $el.find('a[href*="/job/"]').first();
+          if (nestedLink.length) {
+            href = nestedLink.attr('href') || '';
+            const jobUrl = href.startsWith('http') ? href : (href ? this.baseUrl + href : '');
+            if (jobUrl && jobUrl.includes('/job/') && !seenUrls.has(jobUrl.split('?')[0])) {
+              seenUrls.add(jobUrl.split('?')[0]);
+              jobElements.push(el);
+            }
+          }
+        }
+      }
       if (jobElements.length > 0) {
-        logger.info(`Jora: Found ${jobElements.length} jobs using selector: ${selector}`);
-        break;
+        logger.info(`Jora: Found ${jobElements.length} unique jobs using selector: ${selector} (and previous selectors)`);
+        // Don't break - continue to accumulate from other selectors if needed
+      }
+    }
+    
+    // If we didn't find many jobs, try a more aggressive approach
+    if (jobElements.length < 10) {
+      logger.warn(`Jora: Found only ${jobElements.length} jobs, trying broader search...`);
+      const allJobLinks = $('a[href*="/job/"]').toArray();
+      for (const el of allJobLinks) {
+        const $el = $(el);
+        const href = $el.attr('href') || '';
+        if (href) {
+          const jobUrl = href.startsWith('http') ? href : (href ? this.baseUrl + href : '');
+          if (jobUrl && jobUrl.includes('/job/') && jobUrl.includes('-') && !seenUrls.has(jobUrl.split('?')[0])) {
+            seenUrls.add(jobUrl.split('?')[0]);
+            // Find the parent container that likely holds the full job info
+            const parent = $el.closest('[data-automation="job-card"], .job-card, [class*="job"], article, div').first();
+            if (parent.length) {
+              jobElements.push(parent[0]);
+            } else {
+              jobElements.push(el);
+            }
+          }
+        }
+      }
+      if (jobElements.length > 0) {
+        logger.info(`Jora: After broader search, found ${jobElements.length} total unique jobs`);
       }
     }
 
