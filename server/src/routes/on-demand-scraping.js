@@ -25,8 +25,8 @@ router.post('/scrape-on-demand', async (req, res) => {
       
       // Use the exact URL format with OR search terms
       // The search query from user is used for filtering/logging, but we use the exact OR terms
-      // Scrape up to 5 pages to get all job types: developer, programmer, software engineer, frontend, backend, data, analyst, cloud, cybersecurity, web, IT
-      const jobsFound = await scraper.scrapeWithExactUrl(location, 5);
+      // Scrape up to 10 pages to get more diverse job types: developer, programmer, software engineer, frontend, backend, data, analyst, cloud, cybersecurity, web, IT, designer
+      const jobsFound = await scraper.scrapeWithExactUrl(location, 10);
       
       // Save jobs to database
       await scraper.saveJobsToDatabase(jobsFound);

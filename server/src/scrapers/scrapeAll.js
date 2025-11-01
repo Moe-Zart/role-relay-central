@@ -18,8 +18,8 @@ export async function scrapeAllSites(sites = ['jora']) {
       if (site !== 'jora') throw new Error('Only Jora scraping supported');
       logger.info('Starting Jora scraping with exact URL format (all job types: developer, programmer, software engineer, frontend, backend, data, analyst, cloud, cybersecurity, web, IT)...');
       const scraper = new JoraScraper();
-      // Use the exact URL format with OR search terms - scrape up to 5 pages
-      jobs = await scraper.scrapeWithExactUrl('Sydney NSW', 5);
+      // Use the exact URL format with OR search terms - scrape up to 10 pages for more diversity
+      jobs = await scraper.scrapeWithExactUrl('Sydney NSW', 10);
       await scraper.saveJobsToDatabase(jobs);
       logger.info(`Jora scraped ${jobs.length} jobs from exact URL`);
     } catch (error) {

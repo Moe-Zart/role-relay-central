@@ -9,7 +9,7 @@ export class JoraScraper {
   }
 
   // Scrape using EXACT URL provided by user - no modifications
-  async scrapeWithExactUrl(location = 'Sydney NSW', maxPages = 5) {
+  async scrapeWithExactUrl(location = 'Sydney NSW', maxPages = 10) {
     const jobs = [];
     const seen = new Set();
     
@@ -53,7 +53,7 @@ export class JoraScraper {
             logger.info(`Jora: Page ${page}, Job ${idx + 1}/${pageJobs.length}: "${job.title}" at ${job.company} | Hash: ${extractedHash}`);
           });
           
-          // Also log a summary of job types found
+          // Also log a comprehensive summary of job types found
           const jobTypes = pageJobs.map(j => j.title.toLowerCase()).join(' | ');
           const hasFrontend = jobTypes.includes('frontend');
           const hasBackend = jobTypes.includes('backend');
@@ -63,8 +63,31 @@ export class JoraScraper {
           const hasWeb = jobTypes.includes('web');
           const hasIT = jobTypes.includes(' it ') || jobTypes.includes('it ') || /\bit\b/.test(jobTypes);
           const hasProgrammer = jobTypes.includes('programmer');
+          const hasDeveloper = jobTypes.includes('developer') && !jobTypes.includes('engineer');
+          const hasDesigner = jobTypes.includes('designer');
+          const hasEngineer = jobTypes.includes('engineer');
           
-          logger.info(`Jora: Page ${page} Job Type Summary - Frontend: ${hasFrontend}, Backend: ${hasBackend}, Data: ${hasData}, Cloud: ${hasCloud}, Cybersecurity: ${hasCyber}, Web: ${hasWeb}, IT: ${hasIT}, Programmer: ${hasProgrammer}`);
+          // Count job title patterns
+          const engineerCount = pageJobs.filter(j => /engineer/i.test(j.title)).length;
+          const developerCount = pageJobs.filter(j => /developer/i.test(j.title) && !/engineer/i.test(j.title)).length;
+          const analystCount = pageJobs.filter(j => /analyst/i.test(j.title)).length;
+          const designerCount = pageJobs.filter(j => /designer/i.test(j.title)).length;
+          const programmerCount = pageJobs.filter(j => /programmer/i.test(j.title)).length;
+          
+          logger.info(`Jora: Page ${page} Job Type Summary - Frontend: ${hasFrontend}, Backend: ${hasBackend}, Data: ${hasData}, Cloud: ${hasCloud}, Cybersecurity: ${hasCyber}, Web: ${hasWeb}, IT: ${hasIT}, Programmer: ${hasProgrammer}, Developer (not engineer): ${hasDeveloper}, Designer: ${hasDesigner}`);
+          logger.info(`Jora: Page ${page} Job Title Counts - Engineer: ${engineerCount}, Developer (only): ${developerCount}, Analyst: ${analystCount}, Designer: ${designerCount}, Programmer: ${programmerCount}`);
+          
+          // Show unique job title patterns to verify diversity
+          const uniqueTitleWords = new Set();
+          pageJobs.forEach(job => {
+            const words = job.title.toLowerCase().split(/\s+/);
+            words.forEach(word => {
+              if (word.length > 3 && !['the', 'and', 'for', 'with', 'from'].includes(word)) {
+                uniqueTitleWords.add(word);
+              }
+            });
+          });
+          logger.info(`Jora: Page ${page} Unique job title keywords (sample): ${Array.from(uniqueTitleWords).slice(0, 20).join(', ')}`);
           logger.info(`Jora: === END PAGE ${page} JOBS ===`);
         }
         
