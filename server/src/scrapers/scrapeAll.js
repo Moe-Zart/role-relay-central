@@ -16,9 +16,10 @@ export async function scrapeAllSites(sites = ['jora']) {
 
     try {
       if (site !== 'jora') throw new Error('Only Jora scraping supported');
-      logger.info('Starting Jora scraping for IT jobs...');
+      logger.info('Starting Jora scraping for IT jobs with exact URL format...');
       const scraper = new JoraScraper();
-      jobs = await scraper.scrapeJobs();
+      // Use the exact URL format with OR search terms
+      jobs = await scraper.scrapeWithExactUrl('Sydney NSW', 3);
       await scraper.saveJobsToDatabase(jobs);
       logger.info(`Jora scraped ${jobs.length} jobs`);
     } catch (error) {
@@ -36,31 +37,3 @@ export async function scrapeAllSites(sites = ['jora']) {
   return results;
 }
 
-// Individual site scraping functions for manual triggers
-export async function scrapeIndeed() {
-  const scraper = new JoraScraper();
-  const jobs = await scraper.scrapeJobs();
-  await scraper.saveJobsToDatabase(jobs);
-  return jobs;
-}
-
-export async function scrapeSeek() {
-  const scraper = new JoraScraper();
-  const jobs = await scraper.scrapeJobs();
-  await scraper.saveJobsToDatabase(jobs);
-  return jobs;
-}
-
-export async function scrapeGlassdoor() {
-  const scraper = new JoraScraper();
-  const jobs = await scraper.scrapeJobs();
-  await scraper.saveJobsToDatabase(jobs);
-  return jobs;
-}
-
-export async function scrapeLinkedIn() {
-  const scraper = new JoraScraper();
-  const jobs = await scraper.scrapeJobs();
-  await scraper.saveJobsToDatabase(jobs);
-  return jobs;
-}

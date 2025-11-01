@@ -1,4 +1,4 @@
-import axios from 'axios';
+import puppeteer from 'puppeteer';
 import { load } from 'cheerio';
 import { getDatabase } from '../database/init.js';
 import logger from '../utils/logger.js';
@@ -6,56 +6,101 @@ import logger from '../utils/logger.js';
 export class JoraScraper {
   constructor() {
     this.baseUrl = 'https://au.jora.com';
-    this.searchUrl = 'https://au.jora.com/jobs';
   }
 
-  async scrapeJobs(maxPages = 3) {
-    const itKeywords = ['developer', 'engineer', 'programmer', 'software', 'full stack', 'frontend', 'backend', 'data', 'analytics', 'cloud', 'cybersecurity', 'designer', 'it'];
+  // Scrape using EXACT URL provided by user - no modifications
+  async scrapeWithExactUrl(location = 'Sydney NSW', maxPages = 3) {
     const jobs = [];
     const seen = new Set();
+    
     try {
-      // Use a broad IT search term that Jora will accept
-      const searchQuery = 'developer software IT technology';
+      // Use the EXACT URL as provided - no keyword manipulation
+      const exactBaseUrl = 'https://au.jora.com/j?a=14d&disallow=true&l=Sydney+NSW&q=%22developer%22+OR+%22programmer%22+OR+%22software+engineer%22+OR+%22frontend%22+OR+%22backend%22+OR+%22data%22+OR+%22analyst%22+OR+%22cloud%22+OR+%22cybersecurity%22+OR+%22web%22+OR+%22IT%22&sa=70000&sp=facet_listed_date';
+      
       for (let page = 1; page <= maxPages; page++) {
-        const pageJobs = await this.scrapePage(searchQuery, page);
-        // Filter to only IT-related jobs matching our OR keywords
-        const itJobs = pageJobs.filter(job => {
-          const combinedText = (job.title + ' ' + job.descriptionSnippet + ' ' + job.category).toLowerCase();
-          return itKeywords.some(keyword => combinedText.includes(keyword.toLowerCase()));
-        });
-        for (const j of itJobs) {
-          const key = j.sources?.[0]?.externalId || j.sources?.[0]?.url || (j.title + j.company);
+        // Add pagination only if needed
+        const url = page > 1 ? `${exactBaseUrl}&pn=${page}` : exactBaseUrl;
+        
+        logger.info(`Jora: Scraping EXACT URL (page ${page}): ${url}`);
+        const pageJobs = await this.scrapeExactUrlPage(url);
+        
+        // Add ALL jobs from the page - no filtering
+        for (const job of pageJobs) {
+          const key = job.sources?.[0]?.externalId || job.sources?.[0]?.url || (job.title + job.company);
           if (!seen.has(key)) {
             seen.add(key);
-            jobs.push(j);
+            jobs.push(job);
           }
         }
+        
         await this.delay(1000);
       }
-      logger.info(`Jora: collected ${jobs.length} IT jobs (filtered from broader search)`);
+      
+      logger.info(`Jora: Collected ${jobs.length} jobs from exact URL (no filtering)`);
       return jobs;
     } catch (err) {
-      logger.error('Jora scrape failed:', err);
+      logger.error('Jora scrape with exact URL failed:', err);
       throw err;
     }
   }
 
-  async scrapePage(searchTerm, pageNumber) {
-    const params = new URLSearchParams({
-      q: searchTerm,
-      pn: String(pageNumber)
-    });
-    const url = `${this.searchUrl}?${params.toString()}`;
-    logger.info(`Jora: GET ${url}`);
-    const res = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5'
-      },
-      timeout: 20000
-    });
-    const $ = load(res.data);
+  async scrapeExactUrlPage(url) {
+    logger.info(`Jora: Loading page with Puppeteer: ${url}`);
+    let browser = null;
+    try {
+      // Launch Puppeteer with realistic browser settings
+      browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu'
+        ]
+      });
+
+      const page = await browser.newPage();
+      
+      // Set realistic viewport and user agent
+      await page.setViewport({ width: 1920, height: 1080 });
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+      
+      // Set additional headers to appear more like a real browser
+      await page.setExtraHTTPHeaders({
+        'Accept-Language': 'en-AU,en-US;q=0.9,en;q=0.8',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8'
+      });
+
+      // Navigate to the page and wait for content
+      await page.goto(url, { 
+        waitUntil: 'networkidle2',
+        timeout: 30000
+      });
+
+      // Wait a bit for JavaScript to render
+      await page.waitForTimeout(2000);
+
+      // Get the page HTML
+      const html = await page.content();
+      
+      await browser.close();
+      
+      logger.info(`Jora: Successfully loaded page, parsing jobs...`);
+      return this.parseJobPage(html);
+    } catch (error) {
+      if (browser) {
+        await browser.close();
+      }
+      logger.error(`Jora: Error scraping page with Puppeteer: ${error.message}`);
+      throw error;
+    }
+  }
+
+  parseJobPage(html) {
+    const $ = load(html);
 
     // Try multiple selector strategies for Jora's job listings
     const jobSelectors = [
@@ -78,9 +123,8 @@ export class JoraScraper {
     }
 
     if (jobElements.length === 0) {
-      logger.warn(`Jora: No jobs found on page ${pageNumber}. HTML length: ${res.data.length}`);
-      // Log a sample of the HTML for debugging
-      logger.debug(`Jora: HTML sample (first 500 chars): ${res.data.substring(0, 500)}`);
+      logger.warn(`Jora: No jobs found. HTML length: ${html.length}`);
+      logger.debug(`Jora: HTML sample (first 500 chars): ${html.substring(0, 500)}`);
       return [];
     }
 
@@ -151,19 +195,6 @@ export class JoraScraper {
       }
     });
 
-    // Try to augment each job with a Company website source (best-effort)
-    for (const job of results) {
-      try {
-        const companyUrl = await this.fetchCompanySite(job.sources[0].url);
-        if (companyUrl) {
-          job.sources.push({ site: 'Company', url: companyUrl, postedAt: job.postedAt, externalId: `company_${Date.now()}` });
-        }
-        await this.delay(500);
-      } catch (_) {
-        // ignore failures to fetch company site
-      }
-    }
-
     return results;
   }
 
@@ -182,64 +213,6 @@ export class JoraScraper {
   }
 
   delay(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-  async fetchCompanySite(jobUrl) {
-    try {
-      const res = await axios.get(jobUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        },
-        timeout: 20000
-      });
-      const $ = load(res.data);
-
-      // 1) Look for explicit "Apply on company site" link text
-      const applyTextSelectors = [
-        'a:contains("Apply on company site")',
-        'a:contains("Apply on employer website")',
-        'a:contains("Apply on company website")',
-        'a:contains("Apply on employer site")',
-        'a:contains("Company site")',
-        'a:contains("Employer site")'
-      ];
-      for (const sel of applyTextSelectors) {
-        const el = $(sel).first();
-        if (el && el.attr('href')) {
-          const href = el.attr('href');
-          if (href && !href.toLowerCase().includes('jora.com')) return href;
-        }
-      }
-
-      // 2) Some pages may have a primary apply button wrapping an anchor
-      const buttonCandidates = [
-        'a[data-automation="apply-button"]',
-        'a[aria-label*="company"]',
-        'a[href*="apply"]',
-        'a[target="_blank"]'
-      ];
-      for (const sel of buttonCandidates) {
-        const el = $(sel).first();
-        if (el && el.attr('href')) {
-          const href = el.attr('href');
-          if (href && !href.toLowerCase().includes('jora.com')) return href;
-        }
-      }
-
-      // 3) Fallback: first external non-Jora link on page
-      let fallback = '';
-      $('a[href^="http"]').each((_, a) => {
-        const href = $(a).attr('href') || '';
-        if (!href) return;
-        const lower = href.toLowerCase();
-        if (lower.includes('jora.com')) return;
-        fallback = href;
-        return false;
-      });
-      return fallback || null;
-    } catch (e) {
-      return null;
-    }
-  }
 
   async saveJobsToDatabase(jobs) {
     const db = getDatabase();
