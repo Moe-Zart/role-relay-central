@@ -21,11 +21,23 @@ export class JoraScraper {
       logger.info(`Jora: Using EXACT URL with all search terms: developer, programmer, software engineer, frontend, backend, data, analyst, cloud, cybersecurity, web, IT`);
       
       for (let page = 1; page <= maxPages; page++) {
-        // Add pagination only if needed
-        const url = page > 1 ? `${exactBaseUrl}&pn=${page}` : exactBaseUrl;
+        // Add pagination parameter - Jora uses pn parameter (try including for page 1 too)
+        // Some sites require pn=1 for page 1, others start from pn=2
+        const url = page === 1 ? exactBaseUrl : `${exactBaseUrl}&pn=${page}`;
         
-        logger.info(`Jora: Scraping EXACT URL (page ${page}): ${url}`);
+        logger.info(`Jora: Scraping page ${page} of ${maxPages}: ${url}`);
         const pageJobs = await this.scrapeExactUrlPage(url);
+        
+        logger.info(`Jora: Found ${pageJobs.length} jobs on page ${page}`);
+        
+        // Log sample job URLs from this page for debugging
+        if (pageJobs.length > 0) {
+          const sampleUrls = pageJobs.slice(0, 3).map(j => j.sources?.[0]?.url || 'no-url').join(', ');
+          logger.info(`Jora: Sample job URLs from page ${page}: ${sampleUrls}`);
+        }
+        
+        let addedThisPage = 0;
+        let skippedThisPage = 0;
         
         // Add ALL jobs from the page - no filtering, with improved deduplication
         for (const job of pageJobs) {
@@ -37,33 +49,49 @@ export class JoraScraper {
           const normalizedCompany = (job.company || '').toLowerCase().trim().replace(/\s+/g, ' ');
           
           // Use URL as primary key if available (most reliable)
-          // Fallback to externalId, then normalized title+company
+          // Extract job ID from URL pattern: /job/123456 or jk=abc123
           let key = '';
           if (jobUrl) {
-            // Extract the job ID from URL or use full URL
-            const urlMatch = jobUrl.match(/job\/(\d+)|jk=([A-Za-z0-9]+)/);
-            key = urlMatch ? (urlMatch[1] || urlMatch[2]) : jobUrl;
+            // Extract the job ID from URL
+            const urlMatch = jobUrl.match(/\/job\/(\d+)|jk=([A-Za-z0-9]+)/);
+            if (urlMatch) {
+              key = (urlMatch[1] || urlMatch[2] || '').toLowerCase();
+            } else {
+              // Use normalized URL as fallback
+              key = jobUrl.toLowerCase().trim();
+            }
           } else if (externalId) {
-            key = externalId;
+            key = externalId.toLowerCase().trim();
           } else {
-            key = `${normalizedTitle}|${normalizedCompany}`;
+            key = `${normalizedTitle}|${normalizedCompany}`.toLowerCase().trim();
           }
           
-          // Normalize the key (lowercase, remove extra spaces)
-          key = key.toLowerCase().trim();
+          if (!key) {
+            logger.warn(`Jora: Could not generate key for job: ${job.title} at ${job.company}`);
+            continue;
+          }
           
           if (!seen.has(key)) {
             seen.add(key);
             jobs.push(job);
+            addedThisPage++;
           } else {
-            logger.debug(`Jora: Skipping duplicate job: ${job.title} at ${job.company} (key: ${key})`);
+            skippedThisPage++;
+            logger.debug(`Jora: Skipping duplicate on page ${page}: ${job.title} at ${job.company} (key: ${key})`);
           }
         }
+        
+        logger.info(`Jora: Page ${page} - Added ${addedThisPage} new, skipped ${skippedThisPage} duplicates`);
         
         // If we got fewer jobs than expected, we might have reached the end
         if (pageJobs.length === 0) {
           logger.info(`Jora: No jobs found on page ${page}, stopping pagination`);
           break;
+        }
+        
+        // If all jobs on this page were duplicates, might have reached the end of unique results
+        if (pageJobs.length > 0 && addedThisPage === 0) {
+          logger.warn(`Jora: Page ${page} had ${pageJobs.length} jobs but all were duplicates. May have reached end of unique results.`);
         }
         
         await this.delay(1000);
@@ -113,8 +141,21 @@ export class JoraScraper {
         timeout: 30000
       });
 
-      // Wait a bit for JavaScript to render
-      await page.waitForTimeout(2000);
+      // Wait for job cards to be visible (ensures JavaScript has loaded)
+      try {
+        await page.waitForSelector('.job-card, [data-automation="job-card"]', { timeout: 10000 });
+      } catch (e) {
+        logger.warn(`Jora: Job cards selector not found, continuing anyway`);
+      }
+
+      // Wait a bit more for JavaScript to fully render pagination
+      await page.waitForTimeout(3000);
+      
+      // Scroll down to trigger lazy loading if needed
+      await page.evaluate(() => {
+        window.scrollTo(0, document.body.scrollHeight / 2);
+      });
+      await page.waitForTimeout(1000);
 
       // Get the page HTML
       const html = await page.content();
