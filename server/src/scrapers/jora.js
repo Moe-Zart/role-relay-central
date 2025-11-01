@@ -9,16 +9,21 @@ export class JoraScraper {
     this.searchUrl = 'https://au.jora.com/jobs';
   }
 
-  async scrapeJobs(
-    query = 'developer OR engineer OR programmer OR software OR full stack OR frontend OR backend OR data OR analytics OR cloud OR cybersecurity OR designer OR IT',
-    maxPages = 3
-  ) {
+  async scrapeJobs(maxPages = 3) {
+    const itKeywords = ['developer', 'engineer', 'programmer', 'software', 'full stack', 'frontend', 'backend', 'data', 'analytics', 'cloud', 'cybersecurity', 'designer', 'it'];
     const jobs = [];
     const seen = new Set();
     try {
+      // Use a broad IT search term that Jora will accept
+      const searchQuery = 'developer software IT technology';
       for (let page = 1; page <= maxPages; page++) {
-        const pageJobs = await this.scrapePage(query, page);
-        for (const j of pageJobs) {
+        const pageJobs = await this.scrapePage(searchQuery, page);
+        // Filter to only IT-related jobs matching our OR keywords
+        const itJobs = pageJobs.filter(job => {
+          const combinedText = (job.title + ' ' + job.descriptionSnippet + ' ' + job.category).toLowerCase();
+          return itKeywords.some(keyword => combinedText.includes(keyword.toLowerCase()));
+        });
+        for (const j of itJobs) {
           const key = j.sources?.[0]?.externalId || j.sources?.[0]?.url || (j.title + j.company);
           if (!seen.has(key)) {
             seen.add(key);
@@ -27,7 +32,7 @@ export class JoraScraper {
         }
         await this.delay(1000);
       }
-      logger.info(`Jora: collected ${jobs.length} jobs`);
+      logger.info(`Jora: collected ${jobs.length} IT jobs (filtered from broader search)`);
       return jobs;
     } catch (err) {
       logger.error('Jora scrape failed:', err);
