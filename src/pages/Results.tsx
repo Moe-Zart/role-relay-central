@@ -22,6 +22,7 @@ const Results = () => {
   const [savedJobs, setSavedJobs] = useState<string[]>([]);
   const [jobBundles, setJobBundles] = useState<JobBundle[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -55,7 +56,11 @@ const Results = () => {
 
   // Fetch jobs from API
   const fetchJobs = async (page = 1) => {
-    setLoading(true);
+    if (page === 1) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
     setError(null);
     
     try {
@@ -91,6 +96,14 @@ const Results = () => {
       });
     } finally {
       setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  // Load next page
+  const loadNextPage = () => {
+    if (pagination.page < pagination.totalPages && !loadingMore) {
+      fetchJobs(pagination.page + 1);
     }
   };
 
@@ -284,17 +297,49 @@ const Results = () => {
                   </Button>
                 </div>
               ) : (
-                <div className="grid gap-6">
-                  {filteredJobs.map((bundle) => (
-                    <JobCard
-                      key={bundle.bundleId}
-                      bundle={bundle}
-                      onSave={handleSaveJob}
-                      onView={setSelectedJob}
-                      saved={savedJobs.includes(bundle.canonicalJob.id)}
-                    />
-                  ))}
-                </div>
+                <>
+                  <div className="grid gap-6">
+                    {filteredJobs.map((bundle) => (
+                      <JobCard
+                        key={bundle.bundleId}
+                        bundle={bundle}
+                        onSave={handleSaveJob}
+                        onView={setSelectedJob}
+                        saved={savedJobs.includes(bundle.canonicalJob.id)}
+                      />
+                    ))}
+                  </div>
+                  
+                  {/* Load More Button */}
+                  {pagination.page < pagination.totalPages && (
+                    <div className="flex justify-center mt-8">
+                      <Button
+                        onClick={loadNextPage}
+                        disabled={loadingMore}
+                        variant="outline"
+                        className="min-w-[200px]"
+                      >
+                        {loadingMore ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Loading more jobs...
+                          </>
+                        ) : (
+                          <>
+                            Load More ({pagination.total - jobBundles.length} remaining)
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {/* Show current page info */}
+                  {pagination.totalPages > 1 && (
+                    <div className="text-center mt-4 text-sm text-muted-foreground">
+                      Page {pagination.page} of {pagination.totalPages}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
