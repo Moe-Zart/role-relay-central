@@ -76,20 +76,23 @@ async function startServer() {
     app.use(routes);
     logger.info('Routes setup successfully');
     
-    // One-time scrape on server start (Jora, IT-only)
-    try {
-      logger.info('Starting one-time scrape on server boot (Jora)');
-      await scrapeAllSites(['jora']);
-      logger.info('One-time scrape completed');
-    } catch (e) {
-      logger.error('One-time scrape failed', e);
-    }
-    
+    // Start server first (don't block on scraping)
     const server = createServer(app);
     
     server.listen(PORT, () => {
       logger.info(`Server running on port ${PORT}`);
       logger.info(`Health check available at http://localhost:${PORT}/health`);
+    });
+    
+    // One-time scrape on server start (Jora, IT-only) - run in background after server starts
+    setImmediate(async () => {
+      try {
+        logger.info('Starting one-time scrape on server boot (Jora)');
+        await scrapeAllSites(['jora']);
+        logger.info('One-time scrape completed');
+      } catch (e) {
+        logger.error('One-time scrape failed', e);
+      }
     });
     
     // Graceful shutdown
