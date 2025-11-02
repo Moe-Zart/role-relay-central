@@ -80,15 +80,29 @@ const Results = () => {
               const matchedJobsResponse = await jobApiService.getJobsByIds(matchedIdsArray);
               console.log(`✅ Fetched ${matchedJobsResponse.jobs.length} jobs from API`);
               
-              const matchedBundles = jobApiService.convertToJobBundles(matchedJobsResponse.jobs);
-              console.log(`✅ Converted to ${matchedBundles.length} job bundles`);
-              
-              // Log job IDs for debugging
-              const fetchedJobIds = matchedBundles.map(b => b.canonicalJob.id);
-              console.log(`Fetched job IDs:`, fetchedJobIds.slice(0, 5));
-              console.log(`Matched job IDs set:`, Array.from(matchedIds).slice(0, 5));
-              
-              setJobBundles(matchedBundles);
+              if (matchedJobsResponse.jobs.length === 0) {
+                console.warn('⚠️ API returned 0 jobs even though we requested:', matchedIdsArray);
+                toast({
+                  title: "No jobs found",
+                  description: `Could not fetch the ${matchedIdsArray.length} matched jobs. They may have been removed from the database.`,
+                  variant: "destructive"
+                });
+              } else {
+                const matchedBundles = jobApiService.convertToJobBundles(matchedJobsResponse.jobs);
+                console.log(`✅ Converted to ${matchedBundles.length} job bundles`);
+                
+                // Log job IDs for debugging
+                const fetchedJobIds = matchedBundles.map(b => b.canonicalJob.id);
+                console.log(`Fetched job IDs:`, fetchedJobIds.slice(0, 5));
+                console.log(`Matched job IDs set:`, Array.from(matchedIds).slice(0, 5));
+                
+                // Verify all matched IDs are in fetched jobs
+                const missingIds = matchedIdsArray.filter(id => !fetchedJobIds.includes(id));
+                if (missingIds.length > 0) {
+                  console.warn(`⚠️ Some matched job IDs not found in fetched jobs:`, missingIds);
+                }
+                
+                setJobBundles(matchedBundles);
               
               toast({
                 title: "Resume matching complete!",

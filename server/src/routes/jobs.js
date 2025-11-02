@@ -542,7 +542,7 @@ router.get('/scraping/trigger', async (req, res) => {
  * GET /api/v1/jobs/by-ids
  * Get jobs by their IDs (for fetching matched jobs)
  */
-router.get('/by-ids', async (req, res) => {
+router.get('/jobs/by-ids', async (req, res) => {
   try {
     const { ids } = req.query;
     
