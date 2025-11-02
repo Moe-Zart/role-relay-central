@@ -257,6 +257,15 @@ export class JoraScraper {
       }
       
       logger.info(`Jora: Collected ${jobs.length} total jobs from all searches (exact URL + separate term searches)`);
+      
+      // Sort all jobs by posted date (most recent first)
+      jobs.sort((a, b) => {
+        const dateA = new Date(a.postedAt || 0).getTime();
+        const dateB = new Date(b.postedAt || 0).getTime();
+        return dateB - dateA; // Descending order (newest first)
+      });
+      
+      logger.info(`Jora: Sorted ${jobs.length} jobs by posted date (most recent first)`);
       return jobs;
     } catch (err) {
       logger.error('Jora scrape with exact URL failed:', err);
@@ -484,7 +493,20 @@ export class JoraScraper {
         // Try multiple selectors for posted date
         let postedEl = $el.find('[data-automation="job-date"]').first();
         if (!postedEl.length) postedEl = $el.find('.job-listed-date, time, .date').first();
+        if (!postedEl.length) postedEl = $el.find('[class*="date"], [class*="posted"], [class*="listed"]').first();
+        
+        // Try to get date from datetime attribute first (most reliable)
+        let postedAt = null;
+        const datetimeAttr = postedEl.attr('datetime') || postedEl.attr('data-date');
+        
+        if (datetimeAttr) {
+          // Parse ISO date string if available
+          postedAt = new Date(datetimeAttr).toISOString();
+        } else {
+          // Parse relative date text (e.g., "2 days ago", "1 week ago", "3 hours ago")
         const postedText = postedEl.text().trim();
+          postedAt = this.parsePostedDate(postedText);
+        }
 
         // Extract hash from Jora URL format: /job/Job-Title-hash32chars
         // The hash is the last segment after the final dash (32 hex characters)
@@ -507,7 +529,10 @@ export class JoraScraper {
           externalId = `jora_${Date.now()}_${i}`;
         }
 
-        const postedAt = new Date().toISOString();
+        // Fallback to current date if parsing failed
+        if (!postedAt || isNaN(new Date(postedAt).getTime())) {
+          postedAt = new Date().toISOString();
+        }
 
         const workMode = this.determineWorkMode(title + ' ' + description);
         const experience = this.determineExperienceLevel(title + ' ' + description);
@@ -533,6 +558,61 @@ export class JoraScraper {
     });
 
     return results;
+  }
+
+  parsePostedDate(dateText) {
+    if (!dateText) return null;
+    
+    const text = dateText.toLowerCase().trim();
+    const now = new Date();
+    
+    // Match patterns like "X hours ago", "X days ago", "X weeks ago", "X months ago"
+    const hourMatch = text.match(/(\d+)\s*(?:hour|hr|h)\s*ago/);
+    if (hourMatch) {
+      const hours = parseInt(hourMatch[1]);
+      const date = new Date(now.getTime() - hours * 60 * 60 * 1000);
+      return date.toISOString();
+    }
+    
+    const dayMatch = text.match(/(\d+)\s*(?:day|d)\s*ago/);
+    if (dayMatch) {
+      const days = parseInt(dayMatch[1]);
+      const date = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      return date.toISOString();
+    }
+    
+    const weekMatch = text.match(/(\d+)\s*(?:week|wk|w)\s*ago/);
+    if (weekMatch) {
+      const weeks = parseInt(weekMatch[1]);
+      const date = new Date(now.getTime() - weeks * 7 * 24 * 60 * 60 * 1000);
+      return date.toISOString();
+    }
+    
+    const monthMatch = text.match(/(\d+)\s*(?:month|mo|m)\s*ago/);
+    if (monthMatch) {
+      const months = parseInt(monthMatch[1]);
+      const date = new Date(now.getTime() - months * 30 * 24 * 60 * 60 * 1000);
+      return date.toISOString();
+    }
+    
+    // Handle "today" or "just now"
+    if (text.includes('today') || text.includes('just now') || text.includes('now')) {
+      return now.toISOString();
+    }
+    
+    // Handle "yesterday"
+    if (text.includes('yesterday')) {
+      const date = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      return date.toISOString();
+    }
+    
+    // Try to parse as a date string if it looks like one
+    const parsedDate = new Date(dateText);
+    if (!isNaN(parsedDate.getTime())) {
+      return parsedDate.toISOString();
+    }
+    
+    return null;
   }
 
   determineWorkMode(text) {
