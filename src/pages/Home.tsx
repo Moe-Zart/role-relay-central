@@ -42,76 +42,18 @@ const Home = () => {
   }, []);
 
   const handleSearch = async (filters: SearchFilters) => {
-    if (!filters.query?.trim()) {
-      // If no search query, navigate to results with existing filters
-      const params = new URLSearchParams();
-      if (filters.location) params.set('location', filters.location);
-      if (filters.radius) params.set('radius', filters.radius);
-      if (filters.workMode.length) params.set('workMode', filters.workMode.join(','));
-      if (filters.category) params.set('category', filters.category);
-      
-      navigate(`/results?${params.toString()}`);
-      return;
+    // Always navigate to results page - AI search will use existing scraped data
+    // The Results page will use intelligentJobMatcher to expand the query and find relevant jobs
+    const params = new URLSearchParams();
+    if (filters.query?.trim()) {
+      params.set('q', filters.query.trim());
     }
-
-    // Check server status before attempting to scrape
-    if (serverStatus === 'offline') {
-      setScrapingError(true);
-      setScrapingStatus('Backend server is not running. Please start the server first.');
-      return;
-    }
-
-    try {
-      setIsScraping(true);
-      setScrapingError(false);
-      setScrapingStatus("Starting intelligent job search...");
-      setScrapingProgress({
-        jobsFound: 0,
-        estimatedTime: "30-60 seconds",
-        currentStep: "Initializing"
-      });
-
-      // Start on-demand scraping
-      const result = await onDemandScrapingService.scrapeAndSearch(
-        filters.query.trim(),
-        15, // Max 15 jobs
-        120000 // 2 minute timeout
-      );
-
-      // Navigate to results with the scraped data
-      const params = new URLSearchParams();
-      params.set('q', filters.query);
-      if (filters.location) params.set('location', filters.location);
-      if (filters.radius) params.set('radius', filters.radius);
-      if (filters.workMode.length) params.set('workMode', filters.workMode.join(','));
-      if (filters.category) params.set('category', filters.category);
-      
-      navigate(`/results?${params.toString()}`);
-      
-    } catch (error) {
-      console.error('Scraping failed:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
-      setScrapingError(true);
-      if (errorMessage.includes('Server connection failed')) {
-        setScrapingStatus('Server connection failed. Please make sure the backend server is running.');
-      } else {
-        setScrapingStatus(`Scraping failed: ${errorMessage}`);
-      }
-      
-      // Still navigate to results page, but with existing data
-      const params = new URLSearchParams();
-      params.set('q', filters.query);
-      if (filters.location) params.set('location', filters.location);
-      if (filters.radius) params.set('radius', filters.radius);
-      if (filters.workMode.length) params.set('workMode', filters.workMode.join(','));
-      if (filters.category) params.set('category', filters.category);
-      
-      navigate(`/results?${params.toString()}`);
-    } finally {
-      setIsScraping(false);
-      setScrapingProgress(null);
-    }
+    if (filters.location) params.set('location', filters.location);
+    if (filters.radius) params.set('radius', filters.radius);
+    if (filters.workMode.length) params.set('workMode', filters.workMode.join(','));
+    if (filters.category && filters.category !== 'all') params.set('category', filters.category);
+    
+    navigate(`/results?${params.toString()}`);
   };
 
   return (
