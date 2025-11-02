@@ -490,21 +490,52 @@ export class JoraScraper {
         if (!descEl.length) descEl = $el.find('.job-abstract, .job-snippet, .job-description, .description').first();
         const description = descEl.text().trim() || '';
 
-        // Try multiple selectors for posted date
+        // Try multiple selectors for posted date - Jora shows "18h ago, from eFinancialCareers"
         let postedEl = $el.find('[data-automation="job-date"]').first();
-        if (!postedEl.length) postedEl = $el.find('.job-listed-date, time, .date').first();
-        if (!postedEl.length) postedEl = $el.find('[class*="date"], [class*="posted"], [class*="listed"]').first();
+        if (!postedEl.length) postedEl = $el.find('time').first();
+        if (!postedEl.length) postedEl = $el.find('[class*="date"], [class*="ago"]').first();
+        if (!postedEl.length) postedEl = $el.find('[class*="posted"], [class*="listed"]').first();
+        // Try finding text that contains "ago" - this is Jora's format
+        if (!postedEl.length) {
+          $el.find('*').each((_, elem) => {
+            const $elem = $(elem);
+            const text = $elem.text();
+            if (text && text.includes('ago')) {
+              postedEl = $elem;
+              return false; // break
+            }
+          });
+        }
         
         // Try to get date from datetime attribute first (most reliable)
         let postedAt = null;
-        const datetimeAttr = postedEl.attr('datetime') || postedEl.attr('data-date');
+        const datetimeAttr = postedEl.attr('datetime') || postedEl.attr('data-date') || postedEl.attr('title');
         
         if (datetimeAttr) {
           // Parse ISO date string if available
           postedAt = new Date(datetimeAttr).toISOString();
         } else {
-          // Parse relative date text (e.g., "2 days ago", "1 week ago", "3 hours ago")
-        const postedText = postedEl.text().trim();
+          // Extract the posted date text - Jora format: "18h ago, from eFinancialCareers" or "3 days ago"
+          let postedText = postedEl.text().trim();
+          
+          // Extract just the time part before comma (e.g., "18h ago, from eFinancialCareers" -> "18h ago")
+          if (postedText.includes(',')) {
+            postedText = postedText.split(',')[0].trim();
+          }
+          
+          // Also try getting from parent if it contains "ago"
+          if (!postedText || !postedText.includes('ago')) {
+            const parentText = $el.parent().text();
+            if (parentText && parentText.includes('ago')) {
+              // Extract the part with "ago" from parent
+              const agoMatch = parentText.match(/(\d+[hd]\s*ago|\d+\s*(?:hours?|days?|weeks?|months?)\s*ago)/i);
+              if (agoMatch) {
+                postedText = agoMatch[1];
+              }
+            }
+          }
+          
+          logger.debug(`Jora: Extracted posted date text: "${postedText}" for job: ${title}`);
           postedAt = this.parsePostedDate(postedText);
         }
 
@@ -529,9 +560,21 @@ export class JoraScraper {
           externalId = `jora_${Date.now()}_${i}`;
         }
 
-        // Fallback to current date if parsing failed
+        // Only use current date as fallback if we truly couldn't find any date element
+        // Otherwise, log that we couldn't parse the date but still try to save something
         if (!postedAt || isNaN(new Date(postedAt).getTime())) {
-          postedAt = new Date().toISOString();
+          if (!postedEl.length) {
+            // No date element found at all - use current date as fallback
+            logger.warn(`Jora: No date element found for job: ${title} at ${company}`);
+            postedAt = new Date().toISOString();
+          } else {
+            // Date element found but couldn't parse - log and use current date
+            const postedText = postedEl.text().trim();
+            logger.warn(`Jora: Could not parse posted date for job "${title} at ${company}". Date text: "${postedText}"`);
+            postedAt = new Date().toISOString();
+          }
+        } else {
+          logger.debug(`Jora: Successfully parsed posted date: ${postedAt} for job: ${title}`);
         }
 
         const workMode = this.determineWorkMode(title + ' ' + description);
@@ -563,32 +606,57 @@ export class JoraScraper {
   parsePostedDate(dateText) {
     if (!dateText) return null;
     
-    const text = dateText.toLowerCase().trim();
+    // Clean the text - remove any extra content after comma
+    let text = dateText.trim();
+    if (text.includes(',')) {
+      text = text.split(',')[0].trim();
+    }
+    // Remove "from X" suffix if present
+    text = text.replace(/\s+from\s+.*$/i, '').trim();
+    
+    text = text.toLowerCase();
     const now = new Date();
     
-    // Match patterns like "X hours ago", "X days ago", "X weeks ago", "X months ago"
-    const hourMatch = text.match(/(\d+)\s*(?:hour|hr|h)\s*ago/);
+    // Match patterns like "18h ago", "3d ago", "X hours ago", "X days ago", etc.
+    // Handle "Xh ago" format (common on Jora)
+    const hourMatch = text.match(/(\d+)\s*h\s*ago/);
     if (hourMatch) {
       const hours = parseInt(hourMatch[1]);
       const date = new Date(now.getTime() - hours * 60 * 60 * 1000);
       return date.toISOString();
     }
     
-    const dayMatch = text.match(/(\d+)\s*(?:day|d)\s*ago/);
+    // Handle "Xd ago" format (days abbreviation)
+    const dayAbbrMatch = text.match(/(\d+)\s*d\s*ago/);
+    if (dayAbbrMatch) {
+      const days = parseInt(dayAbbrMatch[1]);
+      const date = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      return date.toISOString();
+    }
+    
+    // Match full patterns like "X hours ago", "X days ago", "X weeks ago", "X months ago"
+    const hourFullMatch = text.match(/(\d+)\s*(?:hour|hr|hours|hrs)\s*ago/);
+    if (hourFullMatch) {
+      const hours = parseInt(hourFullMatch[1]);
+      const date = new Date(now.getTime() - hours * 60 * 60 * 1000);
+      return date.toISOString();
+    }
+    
+    const dayMatch = text.match(/(\d+)\s*(?:day|days)\s*ago/);
     if (dayMatch) {
       const days = parseInt(dayMatch[1]);
       const date = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
       return date.toISOString();
     }
     
-    const weekMatch = text.match(/(\d+)\s*(?:week|wk|w)\s*ago/);
+    const weekMatch = text.match(/(\d+)\s*(?:week|wk|weeks)\s*ago/);
     if (weekMatch) {
       const weeks = parseInt(weekMatch[1]);
       const date = new Date(now.getTime() - weeks * 7 * 24 * 60 * 60 * 1000);
       return date.toISOString();
     }
     
-    const monthMatch = text.match(/(\d+)\s*(?:month|mo|m)\s*ago/);
+    const monthMatch = text.match(/(\d+)\s*(?:month|mo|months)\s*ago/);
     if (monthMatch) {
       const months = parseInt(monthMatch[1]);
       const date = new Date(now.getTime() - months * 30 * 24 * 60 * 60 * 1000);
@@ -612,6 +680,7 @@ export class JoraScraper {
       return parsedDate.toISOString();
     }
     
+    logger.warn(`Jora: Could not parse posted date: "${dateText}"`);
     return null;
   }
 
