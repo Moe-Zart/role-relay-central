@@ -25,7 +25,6 @@ export class JoraScraper {
       // These separate searches help balance results since the OR query ranks "software engineer" too high
       const searchTerms = [
         { name: 'developer', query: '%22developer%22', pages: 3 },
-        { name: 'designer', query: '%22designer%22', pages: 2 },
         { name: 'analyst', query: '%22analyst%22+OR+%22data+analyst%22', pages: 3 },
         { name: 'programmer', query: '%22programmer%22', pages: 2 },
         { name: 'frontend-developer', query: '%22frontend+developer%22+OR+%22front-end+developer%22', pages: 2 },
@@ -84,18 +83,16 @@ export class JoraScraper {
           const hasIT = jobTypes.includes(' it ') || jobTypes.includes('it ') || /\bit\b/.test(jobTypes);
           const hasProgrammer = jobTypes.includes('programmer');
           const hasDeveloper = jobTypes.includes('developer') && !jobTypes.includes('engineer');
-          const hasDesigner = jobTypes.includes('designer');
           const hasEngineer = jobTypes.includes('engineer');
           
           // Count job title patterns
           const engineerCount = pageJobs.filter(j => /engineer/i.test(j.title)).length;
           const developerCount = pageJobs.filter(j => /developer/i.test(j.title) && !/engineer/i.test(j.title)).length;
           const analystCount = pageJobs.filter(j => /analyst/i.test(j.title)).length;
-          const designerCount = pageJobs.filter(j => /designer/i.test(j.title)).length;
           const programmerCount = pageJobs.filter(j => /programmer/i.test(j.title)).length;
           
-          logger.info(`Jora: Page ${page} Job Type Summary - Frontend: ${hasFrontend}, Backend: ${hasBackend}, Data: ${hasData}, Cloud: ${hasCloud}, Cybersecurity: ${hasCyber}, Web: ${hasWeb}, IT: ${hasIT}, Programmer: ${hasProgrammer}, Developer (not engineer): ${hasDeveloper}, Designer: ${hasDesigner}`);
-          logger.info(`Jora: Page ${page} Job Title Counts - Engineer: ${engineerCount}, Developer (only): ${developerCount}, Analyst: ${analystCount}, Designer: ${designerCount}, Programmer: ${programmerCount}`);
+          logger.info(`Jora: Page ${page} Job Type Summary - Frontend: ${hasFrontend}, Backend: ${hasBackend}, Data: ${hasData}, Cloud: ${hasCloud}, Cybersecurity: ${hasCyber}, Web: ${hasWeb}, IT: ${hasIT}, Programmer: ${hasProgrammer}, Developer (not engineer): ${hasDeveloper}`);
+          logger.info(`Jora: Page ${page} Job Title Counts - Engineer: ${engineerCount}, Developer (only): ${developerCount}, Analyst: ${analystCount}, Programmer: ${programmerCount}`);
           
           // Show unique job title patterns to verify diversity
           const uniqueTitleWords = new Set();
@@ -242,19 +239,19 @@ export class JoraScraper {
             
             if (!key) continue;
             
-            if (!seen.has(key)) {
-              seen.add(key);
+          if (!seen.has(key)) {
+            seen.add(key);
               jobs.push(job);
               addedForTerm++;
-            }
           }
+        }
           
           logger.info(`Jora: "${searchTerm.name}" page ${page} - Added ${addedForTerm} new jobs`);
           
           if (pageJobs.length === 0) break;
           
-          await this.delay(1000);
-        }
+        await this.delay(1000);
+      }
         
         logger.info(`Jora: Completed "${searchTerm.name}" search, total jobs so far: ${jobs.length}`);
       }
