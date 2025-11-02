@@ -53,7 +53,10 @@ class ResumeParser {
       // Create a summary embedding for semantic matching
       const summary = this.createSummary(resumeText, skills, technologies, experienceLevel);
       
-      logger.info(`Parsed resume: ${skills.length} skills, ${technologies.length} technologies, ${experienceLevel} level`);
+      // Determine primary category using AI
+      const primaryCategory = await this.determineCategory(resumeText, skills, technologies);
+      
+      logger.info(`Parsed resume: ${skills.length} skills, ${technologies.length} technologies, ${experienceLevel} level, category: ${primaryCategory}`);
       
       return {
         skills,
@@ -63,7 +66,8 @@ class ResumeParser {
         experience,
         education,
         summary,
-        rawText: resumeText
+        rawText: resumeText,
+        primaryCategory
       };
     } catch (error) {
       logger.error('Error parsing resume:', error);
@@ -286,6 +290,122 @@ class ResumeParser {
     return `${experienceLevel} professional with expertise in ${topSkills}. 
             Proficient in ${topTech}. 
             ${text.substring(0, 500)}`;
+  }
+
+  /**
+   * Determine primary category of the resume using AI and pattern matching
+   * Categories: data, frontend, backend, fullstack, mobile, devops, cybersecurity, cloud, etc.
+   */
+  async determineCategory(resumeText, skills, technologies) {
+    const text = resumeText.toLowerCase();
+    const skillsLower = skills.map(s => s.toLowerCase());
+    const techsLower = technologies.map(t => t.toLowerCase());
+    const allText = `${text} ${skillsLower.join(' ')} ${techsLower.join(' ')}`.toLowerCase();
+
+    // Category definitions with keywords and technologies
+    const categories = {
+      data: {
+        keywords: ['data', 'analyst', 'analytics', 'data engineer', 'data scientist', 'bi', 'etl', 'warehouse', 'sql', 'database'],
+        techs: ['sql', 'python', 'pandas', 'numpy', 'spark', 'hadoop', 'tableau', 'power bi', 'r', 'jupyter', 'snowflake', 'redshift'],
+        weight: 0
+      },
+      frontend: {
+        keywords: ['frontend', 'front-end', 'ui', 'ux', 'client-side', 'user interface', 'web design'],
+        techs: ['react', 'vue', 'angular', 'javascript', 'typescript', 'html', 'css', 'sass', 'less', 'tailwind', 'next.js', 'nuxt'],
+        weight: 0
+      },
+      backend: {
+        keywords: ['backend', 'back-end', 'server', 'api', 'microservices', 'rest', 'graphql'],
+        techs: ['node', 'express', 'django', 'flask', 'spring', 'java', 'c#', '.net', 'php', 'ruby', 'rails', 'go', 'rust'],
+        weight: 0
+      },
+      fullstack: {
+        keywords: ['fullstack', 'full-stack', 'full stack'],
+        techs: ['react', 'node', 'javascript', 'typescript', 'express', 'next.js'],
+        weight: 0
+      },
+      mobile: {
+        keywords: ['mobile', 'ios', 'android', 'react native', 'flutter', 'swift', 'kotlin'],
+        techs: ['react native', 'flutter', 'swift', 'kotlin', 'ios', 'android', 'xcode', 'android studio'],
+        weight: 0
+      },
+      devops: {
+        keywords: ['devops', 'sre', 'infrastructure', 'ci/cd', 'deployment', 'automation'],
+        techs: ['docker', 'kubernetes', 'jenkins', 'terraform', 'ansible', 'aws', 'azure', 'gcp', 'github actions', 'gitlab ci'],
+        weight: 0
+      },
+      cloud: {
+        keywords: ['cloud', 'aws', 'azure', 'gcp', 'cloud engineer', 'cloud architect'],
+        techs: ['aws', 'azure', 'gcp', 'lambda', 'ec2', 's3', 'cloudformation', 'serverless'],
+        weight: 0
+      },
+      cybersecurity: {
+        keywords: ['security', 'cybersecurity', 'penetration', 'vulnerability', 'compliance', 'pci', 'soc'],
+        techs: ['security', 'penetration testing', 'siem', 'firewall', 'vpn'],
+        weight: 0
+      }
+    };
+
+    // Calculate weights for each category
+    Object.keys(categories).forEach(category => {
+      const cat = categories[category];
+      
+      // Check keywords
+      cat.keywords.forEach(keyword => {
+        if (allText.includes(keyword)) {
+          cat.weight += 2; // Keywords are important
+        }
+      });
+      
+      // Check technologies (higher weight)
+      cat.techs.forEach(tech => {
+        if (techsLower.includes(tech) || skillsLower.includes(tech)) {
+          cat.weight += 3; // Technologies are very important
+        } else if (allText.includes(tech)) {
+          cat.weight += 1; // Mentioned but not in tech list
+        }
+      });
+    });
+
+    // Special handling for fullstack: check if both frontend AND backend are present
+    const hasFrontend = categories.frontend.weight > 5;
+    const hasBackend = categories.backend.weight > 5;
+    if (hasFrontend && hasBackend && !categories.fullstack.keywords.some(kw => allText.includes(kw))) {
+      // If both frontend and backend indicators exist, boost fullstack
+      categories.fullstack.weight += 10;
+    }
+
+    // Find category with highest weight
+    let maxWeight = 0;
+    let primaryCategory = 'general';
+    
+    Object.keys(categories).forEach(category => {
+      if (categories[category].weight > maxWeight) {
+        maxWeight = categories[category].weight;
+        primaryCategory = category;
+      }
+    });
+
+    // If no clear category, default based on most common technologies
+    if (maxWeight < 3) {
+      // Check for most common tech pattern
+      const frontendCount = techsLower.filter(t => ['react', 'vue', 'angular', 'html', 'css'].some(ft => t.includes(ft))).length;
+      const backendCount = techsLower.filter(t => ['node', 'express', 'django', 'spring', 'api'].some(bt => t.includes(bt))).length;
+      const dataCount = techsLower.filter(t => ['sql', 'python', 'data', 'analytics'].some(dt => t.includes(dt))).length;
+      
+      if (frontendCount > 2 && backendCount > 1) {
+        primaryCategory = 'fullstack';
+      } else if (frontendCount > backendCount && frontendCount > dataCount) {
+        primaryCategory = 'frontend';
+      } else if (backendCount > frontendCount && backendCount > dataCount) {
+        primaryCategory = 'backend';
+      } else if (dataCount > 2) {
+        primaryCategory = 'data';
+      }
+    }
+
+    logger.info(`Resume category determined: ${primaryCategory} (weight: ${maxWeight})`);
+    return primaryCategory;
   }
 }
 

@@ -237,17 +237,50 @@ export const ResumeUpload = ({ compact = false }: { compact?: boolean }) => {
               <div className="border rounded-lg p-3 space-y-2 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Experience:</span>
-                  <Badge variant="secondary" className="text-xs">{parsedResume.experienceLevel}</Badge>
+                  <Badge variant="secondary" className="text-xs">
+                    {parsedResume.experienceLevel}
+                    {parsedResume.yearsOfExperience > 0 && ` (${parsedResume.yearsOfExperience}y)`}
+                  </Badge>
                 </div>
-                {parsedResume.skills.length > 0 && (
+                {parsedResume.primaryCategory && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Category:</span>
+                    <Badge variant="default" className="text-xs">{parsedResume.primaryCategory}</Badge>
+                  </div>
+                )}
+                {parsedResume.skills && parsedResume.skills.length > 0 ? (
                   <div>
-                    <p className="text-muted-foreground mb-1">Top Skills:</p>
+                    <p className="text-muted-foreground mb-1">Skills ({parsedResume.skills.length}):</p>
                     <div className="flex flex-wrap gap-1">
-                      {parsedResume.skills.slice(0, 5).map((skill, idx) => (
+                      {parsedResume.skills.slice(0, 8).map((skill, idx) => (
                         <Badge key={idx} variant="outline" className="text-xs">
                           {skill}
                         </Badge>
                       ))}
+                      {parsedResume.skills.length > 8 && (
+                        <Badge variant="outline" className="text-xs">
+                          +{parsedResume.skills.length - 8} more
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-xs">No skills detected</p>
+                )}
+                {parsedResume.technologies && parsedResume.technologies.length > 0 && (
+                  <div>
+                    <p className="text-muted-foreground mb-1">Technologies ({parsedResume.technologies.length}):</p>
+                    <div className="flex flex-wrap gap-1">
+                      {parsedResume.technologies.slice(0, 6).map((tech, idx) => (
+                        <Badge key={idx} variant="outline" className="text-xs">
+                          {tech}
+                        </Badge>
+                      ))}
+                      {parsedResume.technologies.length > 6 && (
+                        <Badge variant="outline" className="text-xs">
+                          +{parsedResume.technologies.length - 6} more
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 )}
@@ -417,21 +450,26 @@ export const ResumeUpload = ({ compact = false }: { compact?: boolean }) => {
                   )}
                 </div>
 
-                {parsedResume.skills.length > 0 && (
+                {parsedResume.skills && parsedResume.skills.length > 0 ? (
                   <div>
-                    <p className="text-xs text-muted-foreground mb-2">Skills</p>
+                    <p className="text-xs text-muted-foreground mb-2">Skills ({parsedResume.skills.length})</p>
                     <div className="flex flex-wrap gap-1">
-                      {parsedResume.skills.slice(0, 10).map((skill, idx) => (
+                      {parsedResume.skills.slice(0, 15).map((skill, idx) => (
                         <Badge key={idx} variant="outline" className="text-xs">
                           {skill}
                         </Badge>
                       ))}
-                      {parsedResume.skills.length > 10 && (
+                      {parsedResume.skills.length > 15 && (
                         <Badge variant="outline" className="text-xs">
-                          +{parsedResume.skills.length - 10} more
+                          +{parsedResume.skills.length - 15} more
                         </Badge>
                       )}
                     </div>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">Skills</p>
+                    <p className="text-xs text-muted-foreground italic">No skills detected</p>
                   </div>
                 )}
 

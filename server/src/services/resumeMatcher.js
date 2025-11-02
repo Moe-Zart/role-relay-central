@@ -28,7 +28,17 @@ class ResumeMatcher {
         matchPercentage: 0
       };
 
-      // 1. Match skills
+      // 1. Determine job category (CRITICAL for matching)
+      const jobCategory = this.determineJobCategory(job.title, job.description_snippet || job.description_full || '');
+      const resumeCategory = resumeData.primaryCategory || 'general';
+      
+      // Category match is THE MOST IMPORTANT factor
+      const categoryMatch = this.calculateCategoryMatch(resumeCategory, jobCategory);
+      matchDetails.categoryMatch = categoryMatch;
+      matchDetails.resumeCategory = resumeCategory;
+      matchDetails.jobCategory = jobCategory;
+
+      // 2. Match skills
       const jobText = `${job.title} ${job.description_snippet || ''} ${job.description_full || ''}`.toLowerCase();
       const resumeSkills = resumeData.skills.map(s => s.toLowerCase());
       
@@ -40,7 +50,7 @@ class ResumeMatcher {
         }
       });
 
-      // 2. Match technologies
+      // 3. Match technologies
       const resumeTechnologies = resumeData.technologies.map(t => t.toLowerCase());
       resumeTechnologies.forEach(tech => {
         if (jobText.includes(tech)) {
@@ -50,7 +60,7 @@ class ResumeMatcher {
         }
       });
 
-      // 3. Semantic similarity
+      // 4. Semantic similarity
       const semanticScore = await semanticMatcher.calculateSimilarity(
         resumeData.summary || resumeData.rawText?.substring(0, 500) || '',
         job.title,
@@ -78,11 +88,13 @@ class ResumeMatcher {
         return matchDetails;
       }
 
-      // 6. Calculate overall match score with IMPROVED weighting for higher percentages
-      // Base weights that sum to 1.0, allowing scores to reach 100%
-      const semanticWeight = 0.30; // Increased - semantic is valuable
-      const skillWeight = 0.40;     // Skills are important
-      const techWeight = 0.30;      // Technologies are important
+      // 7. Calculate overall match score with CATEGORY as PRIMARY factor
+      // Category match is THE MOST IMPORTANT - if categories don't match, heavily penalize
+      // Base weights: Category is 40%, then skills/tech/semantic share the rest
+      const categoryWeight = 0.40;   // MOST IMPORTANT - category alignment
+      const semanticWeight = 0.25;   // Semantic similarity
+      const skillWeight = 0.20;      // Skills
+      const techWeight = 0.15;       // Technologies
 
       // Use gentler exponential scaling (1.2 instead of 1.5) to reward partial matches more
       // This makes 60% skill match give ~56% score instead of ~46%
@@ -109,35 +121,49 @@ class ResumeMatcher {
       
       const semanticContribution = effectiveSemanticScore * semanticWeight;
       
-      // Calculate base score
-      let baseScore = semanticContribution + skillScore + techScore;
+      // Category score is CRITICAL - if categories match perfectly, huge boost
+      // If categories don't match well, heavy penalty
+      const categoryScore = categoryMatch * categoryWeight;
+      
+      // Calculate base score with category as primary factor
+      let baseScore = categoryScore + semanticContribution + skillScore + techScore;
       
       // Progressive bonuses for strong matches - helps reach 90-100%
       let bonusMultiplier = 1.0;
       
+      // CRITICAL BONUS: Perfect category match
+      if (categoryMatch >= 0.9) {
+        bonusMultiplier += 0.20; // 20% bonus for perfect category alignment
+      } else if (categoryMatch >= 0.7) {
+        bonusMultiplier += 0.10; // 10% bonus for good category match
+      } else if (categoryMatch < 0.3) {
+        // Heavy penalty for category mismatch
+        bonusMultiplier *= 0.5; // Cut score in half if categories don't match
+      }
+      
       // Bonus 1: Skills + Technologies both matched
       if (hasSkillsMatch && hasTechMatch) {
-        bonusMultiplier += 0.12; // 12% bonus
+        bonusMultiplier += 0.10; // 10% bonus
       }
       
       // Bonus 2: High skill match rate (70%+)
       if (skillMatchRatio >= 0.7) {
-        bonusMultiplier += 0.08; // 8% bonus
+        bonusMultiplier += 0.06; // 6% bonus
       }
       
       // Bonus 3: High tech match rate (70%+)
       if (techMatchRatio >= 0.7) {
-        bonusMultiplier += 0.08; // 8% bonus
+        bonusMultiplier += 0.06; // 6% bonus
       }
       
       // Bonus 4: Very high semantic similarity (80%+)
       if (semanticScore >= 0.8) {
-        bonusMultiplier += 0.10; // 10% bonus
+        bonusMultiplier += 0.08; // 8% bonus
       }
       
-      // Bonus 5: Perfect or near-perfect matches (all 3 indicators strong)
-      if (skillMatchRatio >= 0.8 && techMatchRatio >= 0.8 && semanticScore >= 0.7) {
-        bonusMultiplier += 0.15; // Additional 15% for exceptional matches
+      // Bonus 5: Perfect category + strong technical match
+      if (categoryMatch >= 0.9 && skillMatchRatio >= 0.6 && techMatchRatio >= 0.6) {
+        bonusMultiplier += 0.15; // Additional 15% for exceptional category+technical matches
       }
       
       // Apply bonuses to base score
@@ -147,9 +173,10 @@ class ResumeMatcher {
       // Scale to 0-100
       matchDetails.matchPercentage = Math.round(matchDetails.overallScore * 100);
       
-      // More lenient threshold: Show jobs with at least 35% match (was 40%)
-      // But only if they have some real indicators
-      if (matchDetails.matchPercentage < 35) {
+      // Threshold: Show jobs with at least 30% match IF category matches well
+      // OR 40% match if category doesn't match (stricter for category mismatches)
+      const minThreshold = categoryMatch >= 0.5 ? 30 : 40;
+      if (matchDetails.matchPercentage < minThreshold) {
         matchDetails.matchPercentage = 0;
         matchDetails.overallScore = 0;
         return matchDetails;
@@ -166,8 +193,19 @@ class ResumeMatcher {
         matchDetails.matchPercentage = Math.max(matchDetails.matchPercentage, 95);
       }
 
-      // 7. Generate match reasons with suggestions for improving match
+      // 8. Generate match reasons with CATEGORY as primary reason
       const suggestions = [];
+      
+      // Category match is the PRIMARY reason
+      if (categoryMatch >= 0.9) {
+        matchDetails.matchReasons.push(`🎯 Perfect category match: ${resumeCategory} → ${jobCategory}`);
+      } else if (categoryMatch >= 0.7) {
+        matchDetails.matchReasons.push(`✓ Strong category alignment: ${resumeCategory} → ${jobCategory}`);
+      } else if (categoryMatch >= 0.5) {
+        matchDetails.matchReasons.push(`✓ Category match: ${resumeCategory} → ${jobCategory}`);
+      } else if (categoryMatch < 0.3) {
+        matchDetails.matchReasons.push(`⚠️ Category mismatch: Your ${resumeCategory} background vs ${jobCategory} role`);
+      }
       
       if (matchDetails.skillsMatched.length > 0) {
         const topMatchedSkills = matchDetails.skillsMatched.slice(0, 5).join(', ');
