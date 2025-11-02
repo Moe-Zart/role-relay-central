@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
-import { SlidersHorizontal, ArrowUpDown, Menu, X, Loader2 } from "lucide-react";
+import { SlidersHorizontal, ArrowUpDown, Menu, X, Loader2, Clock } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { SearchForm } from "@/components/search/SearchForm";
 import { JobFilters } from "@/components/filters/JobFilters";
@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { SearchFilters, JobBundle } from "@/types/jobs";
 import { jobApiService } from "@/services/jobApi";
 import { useToast } from "@/hooks/use-toast";
+import { formatDistanceToNow } from "date-fns";
 
 const Results = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -31,6 +32,18 @@ const Results = () => {
     totalPages: 0
   });
   const { toast } = useToast();
+
+  const formatTimeAgo = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        return 'Recently posted';
+      }
+      return formatDistanceToNow(date, { addSuffix: true });
+    } catch (error) {
+      return 'Recently posted';
+    }
+  };
 
   // Initialize filters from URL params
   const [filters, setFilters] = useState<SearchFilters>({
@@ -375,6 +388,16 @@ const Results = () => {
                     <Badge variant="outline">{selectedJob.canonicalJob.experience}</Badge>
                   </div>
                 </div>
+                
+                {/* Posted date on Jora */}
+                {selectedJob.canonicalJob.postedAt && (
+                  <div className="flex items-center space-x-2 text-muted-foreground">
+                    <Clock className="h-4 w-4" />
+                    <span className="text-sm">
+                      Posted on Jora: <span className="font-medium">{formatTimeAgo(selectedJob.canonicalJob.postedAt)}</span>
+                    </span>
+                  </div>
+                )}
                 
                 <div>
                   <h4 className="font-semibold mb-2">Apply on these sites</h4>
