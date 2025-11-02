@@ -66,14 +66,15 @@ const Home = () => {
           <div className="max-w-4xl mx-auto text-center space-y-8">
             <div className="space-y-4">
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground">
-                Welcome to JobNavigator
+                Find Your Perfect Job with AI
               </h1>
               <h2 className="text-xl md:text-2xl text-muted-foreground">
-                Search once. Scrape everything. See all available jobs instantly.
+                Search smarter. Match better. Get exactly what you're looking for.
               </h2>
               <p className="text-lg text-muted-foreground max-w-3xl mx-auto">
-                JobNavigator uses AI-powered intelligent scraping to find jobs across multiple sites in real-time. 
-                Just search for a role and we'll scrape the latest job listings specifically for you with smart matching.
+                Our AI-powered search understands your role and matches you with semantically similar jobs. 
+                Search for "frontend" and we'll show you frontend roles—not backend or unrelated positions. 
+                Intelligent matching means better, more relevant results.
               </p>
             </div>
             
@@ -181,7 +182,7 @@ const Home = () => {
             <div className="text-center space-y-4 mb-12">
               <h2 className="text-3xl font-bold text-foreground">How It Works</h2>
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                Our intelligent scraping system understands job roles and finds related positions automatically
+                Our AI-powered semantic matching ensures you only see jobs that truly match your search
               </p>
             </div>
             
@@ -190,9 +191,9 @@ const Home = () => {
                 <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
                   <Search className="h-8 w-8 text-primary" />
                 </div>
-                <h3 className="text-xl font-semibold text-foreground">1. Smart Search</h3>
+                <h3 className="text-xl font-semibold text-foreground">1. Enter Your Search</h3>
                 <p className="text-muted-foreground">
-                  Search for any role and our AI expands it to include synonyms and related positions
+                  Type the role you're looking for—our AI understands job titles, synonyms, and related positions
                 </p>
               </div>
               
@@ -200,9 +201,9 @@ const Home = () => {
                 <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
                   <Zap className="h-8 w-8 text-primary" />
                 </div>
-                <h3 className="text-xl font-semibold text-foreground">2. Real-time Scraping</h3>
+                <h3 className="text-xl font-semibold text-foreground">2. AI Semantic Matching</h3>
                 <p className="text-muted-foreground">
-                  We scrape job sites in real-time to find the latest opportunities matching your search
+                  Our AI analyzes all jobs and filters out unrelated positions. Search "frontend" and get frontend jobs—not backend or other roles
                 </p>
               </div>
               
@@ -210,9 +211,9 @@ const Home = () => {
                 <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
                   <CheckCircle className="h-8 w-8 text-primary" />
                 </div>
-                <h3 className="text-xl font-semibold text-foreground">3. Instant Results</h3>
+                <h3 className="text-xl font-semibold text-foreground">3. Relevant Results</h3>
                 <p className="text-muted-foreground">
-                  See all matching jobs with relevance scoring and intelligent categorization
+                  See only the jobs that match your search, ranked by semantic relevance and recency
                 </p>
               </div>
             </div>
