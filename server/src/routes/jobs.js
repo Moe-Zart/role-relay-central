@@ -1,6 +1,7 @@
 import express from 'express';
 import { getDatabase } from '../database/init.js';
 import logger from '../utils/logger.js';
+import { semanticMatcher } from '../services/semanticMatcher.js';
 
 const router = express.Router();
 
@@ -201,10 +202,54 @@ router.get('/jobs', async (req, res) => {
     });
     
     // Parse sources JSON
-    const processedJobs = jobs.map(job => ({
+    let processedJobs = jobs.map(job => ({
       ...job,
       sources: job.sources_json ? JSON.parse(`[${job.sources_json}]`) : []
     }));
+    
+    // Apply AI semantic matching if search query exists
+    if (search && processedJobs.length > 0) {
+      try {
+        logger.info(`Applying AI semantic matching to ${processedJobs.length} jobs for query: "${search}"`);
+        
+        // Score jobs semantically
+        const scoredJobs = await semanticMatcher.scoreJobs(search, processedJobs);
+        
+        // Calculate combined score: 70% semantic + 30% keyword relevance
+        // Extract keyword relevance from current sorting (approximate)
+        processedJobs = scoredJobs.map((job, index) => {
+          // Keyword relevance is approximated by inverse of index (higher index = lower relevance)
+          // Normalize to 0-1 range
+          const keywordScore = 1 - (index / Math.max(scoredJobs.length - 1, 1));
+          
+          // Combined score: 70% semantic, 30% keyword
+          const combinedScore = (job.semanticScore * 0.7) + (keywordScore * 0.3);
+          
+          return {
+            ...job,
+            semanticScore: job.semanticScore,
+            combinedRelevanceScore: combinedScore
+          };
+        });
+        
+        // Re-sort by combined relevance score
+        processedJobs.sort((a, b) => {
+          // Primary: combined relevance score (higher is better)
+          if (Math.abs(a.combinedRelevanceScore - b.combinedRelevanceScore) > 0.01) {
+            return b.combinedRelevanceScore - a.combinedRelevanceScore;
+          }
+          // Secondary: posted date (newer is better)
+          const dateA = new Date(a.posted_at || 0).getTime();
+          const dateB = new Date(b.posted_at || 0).getTime();
+          return dateB - dateA;
+        });
+        
+        logger.info(`AI semantic matching completed. Top job semantic score: ${processedJobs[0]?.semanticScore?.toFixed(3)}`);
+      } catch (error) {
+        logger.error('Error applying semantic matching, falling back to keyword matching:', error);
+        // Continue with keyword-matched results if semantic matching fails
+      }
+    }
     
     // Get total count for pagination
     // Use only WHERE condition params (not ORDER BY or LIMIT/OFFSET params)
