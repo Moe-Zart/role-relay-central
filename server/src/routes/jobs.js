@@ -208,43 +208,46 @@ router.get('/jobs', async (req, res) => {
     }));
     
     // Apply AI semantic matching if search query exists
+    // This filters out unrelated jobs and ranks by semantic relevance
     if (search && processedJobs.length > 0) {
       try {
         logger.info(`Applying AI semantic matching to ${processedJobs.length} jobs for query: "${search}"`);
         
-        // Score jobs semantically
-        const scoredJobs = await semanticMatcher.scoreJobs(search, processedJobs);
+        // Use a stricter similarity threshold (0.55) to filter out unrelated jobs
+        // For example: "frontend" won't match "backend", "data analyst" won't match "developer"
+        // Adjust based on how strict you want matching (0.5 = looser, 0.6 = stricter)
+        const minSimilarity = 0.55;
         
-        // Calculate combined score: 70% semantic + 30% keyword relevance
-        // Extract keyword relevance from current sorting (approximate)
-        processedJobs = scoredJobs.map((job, index) => {
-          // Keyword relevance is approximated by inverse of index (higher index = lower relevance)
-          // Normalize to 0-1 range
-          const keywordScore = 1 - (index / Math.max(scoredJobs.length - 1, 1));
-          
-          // Combined score: 70% semantic, 30% keyword
-          const combinedScore = (job.semanticScore * 0.7) + (keywordScore * 0.3);
-          
-          return {
+        // Score jobs semantically and filter out low-similarity matches
+        const scoredJobs = await semanticMatcher.scoreJobs(search, processedJobs, minSimilarity);
+        
+        if (scoredJobs.length === 0) {
+          // If no jobs pass semantic threshold, log warning but return empty
+          logger.warn(`No jobs passed semantic similarity threshold (${minSimilarity}) for query: "${search}"`);
+          processedJobs = [];
+        } else {
+          // All jobs already passed the similarity threshold, so use semantic score as primary ranking
+          // Sort by semantic score (highest first), then by posted date
+          processedJobs = scoredJobs.map(job => ({
             ...job,
-            semanticScore: job.semanticScore,
-            combinedRelevanceScore: combinedScore
-          };
-        });
-        
-        // Re-sort by combined relevance score
-        processedJobs.sort((a, b) => {
-          // Primary: combined relevance score (higher is better)
-          if (Math.abs(a.combinedRelevanceScore - b.combinedRelevanceScore) > 0.01) {
-            return b.combinedRelevanceScore - a.combinedRelevanceScore;
-          }
-          // Secondary: posted date (newer is better)
-          const dateA = new Date(a.posted_at || 0).getTime();
-          const dateB = new Date(b.posted_at || 0).getTime();
-          return dateB - dateA;
-        });
-        
-        logger.info(`AI semantic matching completed. Top job semantic score: ${processedJobs[0]?.semanticScore?.toFixed(3)}`);
+            combinedRelevanceScore: job.semanticScore // Use semantic score directly as relevance
+          }));
+          
+          // Sort by semantic relevance (higher is better)
+          processedJobs.sort((a, b) => {
+            // Primary: semantic score (higher is better)
+            const scoreDiff = b.semanticScore - a.semanticScore;
+            if (Math.abs(scoreDiff) > 0.01) {
+              return scoreDiff;
+            }
+            // Secondary: posted date (newer is better)
+            const dateA = new Date(a.posted_at || 0).getTime();
+            const dateB = new Date(b.posted_at || 0).getTime();
+            return dateB - dateA;
+          });
+          
+          logger.info(`AI semantic matching completed. ${processedJobs.length} jobs passed threshold. Top job semantic score: ${processedJobs[0]?.semanticScore?.toFixed(3)}`);
+        }
       } catch (error) {
         logger.error('Error applying semantic matching, falling back to keyword matching:', error);
         // Continue with keyword-matched results if semantic matching fails

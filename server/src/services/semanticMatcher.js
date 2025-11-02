@@ -89,6 +89,7 @@ class SemanticMatcher {
   /**
    * Calculate semantic similarity between a query and job text
    * Returns a score between 0 and 1
+   * Higher scores mean better semantic match
    */
   async calculateSimilarity(query, jobTitle, jobDescription = '') {
     if (!this.initialized) {
@@ -101,8 +102,10 @@ class SemanticMatcher {
     }
 
     try {
-      // Combine job title and description for better context
-      const jobText = `${jobTitle} ${jobDescription}`.trim().substring(0, 512); // Limit length
+      // Prioritize job title for matching - titles are more specific
+      // Use description as secondary context (shorter snippet for faster processing)
+      const descriptionSnippet = (jobDescription || '').substring(0, 200).trim();
+      const jobText = `${jobTitle} ${descriptionSnippet}`.trim().substring(0, 512);
       
       // Get embeddings
       const queryEmbedding = await this.getEmbedding(query);
@@ -116,7 +119,17 @@ class SemanticMatcher {
       const similarity = this.cosineSimilarity(queryEmbedding, jobEmbedding);
       
       // Normalize to 0-1 range (cosine similarity is already -1 to 1, but we normalize to 0-1)
-      return (similarity + 1) / 2;
+      const normalizedScore = (similarity + 1) / 2;
+      
+      // Boost score if query appears directly in title (exact match boost)
+      const queryLower = query.toLowerCase();
+      const titleLower = jobTitle.toLowerCase();
+      if (titleLower.includes(queryLower) || queryLower.includes(titleLower.split(' ')[0])) {
+        // Exact keyword match in title gets a boost
+        return Math.min(1.0, normalizedScore + 0.2);
+      }
+      
+      return normalizedScore;
     } catch (error) {
       logger.error('Error calculating semantic similarity:', error);
       return 0;
@@ -125,9 +138,15 @@ class SemanticMatcher {
 
   /**
    * Calculate semantic relevance scores for multiple jobs
+   * Filters out jobs with similarity below threshold
    * Returns jobs with added semanticScore field
+   * 
+   * @param {string} query - Search query
+   * @param {Array} jobs - Array of job objects
+   * @param {number} minSimilarityThreshold - Minimum similarity score to include (0-1), default 0.5
+   * @returns {Array} Filtered and scored jobs
    */
-  async scoreJobs(query, jobs) {
+  async scoreJobs(query, jobs, minSimilarityThreshold = 0.5) {
     if (!this.initialized) {
       await this.initialize();
     }
@@ -158,7 +177,13 @@ class SemanticMatcher {
         scoredJobs.push(...scoredBatch);
       }
 
-      return scoredJobs;
+      // Filter out jobs below similarity threshold
+      // This ensures we only show semantically relevant jobs
+      const filteredJobs = scoredJobs.filter(job => job.semanticScore >= minSimilarityThreshold);
+      
+      logger.info(`Semantic filtering: ${scoredJobs.length} jobs scored, ${filteredJobs.length} above threshold ${minSimilarityThreshold}`);
+      
+      return filteredJobs;
     } catch (error) {
       logger.error('Error scoring jobs semantically:', error);
       // Return jobs without semantic scores on error
