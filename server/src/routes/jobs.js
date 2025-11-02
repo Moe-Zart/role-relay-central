@@ -38,6 +38,7 @@ router.get('/jobs', async (req, res) => {
     
     const conditions = [];
     const params = [];
+    let whereParamsCount = 0; // Track how many params are for WHERE conditions
     
     if (search) {
       // Intelligent search: split by space to handle multiple terms
@@ -138,6 +139,9 @@ router.get('/jobs', async (req, res) => {
       query += ' WHERE ' + conditions.join(' AND ');
     }
     
+    // Track where WHERE params end (before ORDER BY params)
+    whereParamsCount = params.length;
+    
     // Order by: If search query exists, prioritize relevance (title matches > company matches > description matches)
     // Otherwise, order by posted_at DESC (newest first)
     // Note: Frontend will apply additional sorting (newest, company a-z, etc.) if user selects a sort option
@@ -185,13 +189,16 @@ router.get('/jobs', async (req, res) => {
     }));
     
     // Get total count for pagination
-    let countQuery = 'SELECT COUNT(*) as total FROM jobs j';
+    // Use only WHERE condition params (not ORDER BY or LIMIT/OFFSET params)
+    let countQuery = 'SELECT COUNT(DISTINCT j.id) as total FROM jobs j';
     if (conditions.length > 0) {
       countQuery += ' WHERE ' + conditions.join(' AND ');
     }
     
     const countResult = await new Promise((resolve, reject) => {
-      db.get(countQuery, params.slice(0, -2), (err, row) => {
+      // Only use params for WHERE conditions (exclude ORDER BY and pagination params)
+      const whereParams = params.slice(0, whereParamsCount);
+      db.get(countQuery, whereParams, (err, row) => {
         if (err) reject(err);
         else resolve(row);
       });
