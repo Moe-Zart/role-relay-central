@@ -261,9 +261,16 @@ const Results = () => {
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-foreground">
                   {loading ? (
-                    <div className="flex items-center space-x-2">
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      <span>Loading jobs...</span>
+                    <div className="flex flex-col space-y-2">
+                      <div className="flex items-center space-x-2">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <span>{filters.query ? 'AI is analyzing all jobs to find the best matches...' : 'Loading jobs...'}</span>
+                      </div>
+                      {filters.query && (
+                        <p className="text-sm text-muted-foreground ml-7">
+                          This may take a few moments while AI processes semantic similarity
+                        </p>
+                      )}
                     </div>
                   ) : (
                     `${pagination.total} job${pagination.total !== 1 ? 's' : ''} found`
@@ -294,8 +301,14 @@ const Results = () => {
                 <div className="text-center py-12">
                   <div className="text-muted-foreground mb-4">
                     <SlidersHorizontal className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                    <h3 className="text-lg font-medium mb-2">No matches yet</h3>
-                    <p>Try widening your radius or removing some filters.</p>
+                    <h3 className="text-lg font-medium mb-2">
+                      {filters.query ? 'No jobs matched your search' : 'No matches yet'}
+                    </h3>
+                    <p>
+                      {filters.query 
+                        ? 'Try adjusting your search terms or removing filters.' 
+                        : 'Try widening your radius or removing some filters.'}
+                    </p>
                   </div>
                   <Button variant="outline" onClick={() => setFilters({
                     query: "", location: "", radius: "25 km", workMode: [], category: "all",

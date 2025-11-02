@@ -189,94 +189,125 @@ router.get('/jobs', async (req, res) => {
     
     query += ` GROUP BY j.id ORDER BY ${orderBy}`;
     
-    // Add pagination
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-    query += ` LIMIT ? OFFSET ?`;
-    params.push(parseInt(limit), offset);
+    // IMPORTANT: For AI semantic matching, we need to process ALL matching jobs first,
+    // then apply pagination after semantic filtering
+    // If no search query, apply pagination directly
+    let processedJobs;
+    let totalCount;
     
-    const jobs = await new Promise((resolve, reject) => {
-      db.all(query, params, (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
+    if (search) {
+      // For search queries, fetch ALL matching jobs (no pagination yet)
+      // AI will filter and rank them, then we'll paginate
+      const allJobs = await new Promise((resolve, reject) => {
+        db.all(query, params, (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows);
+        });
       });
-    });
-    
-    // Parse sources JSON
-    let processedJobs = jobs.map(job => ({
-      ...job,
-      sources: job.sources_json ? JSON.parse(`[${job.sources_json}]`) : []
-    }));
-    
-    // Apply AI semantic matching if search query exists
-    // This filters out unrelated jobs and ranks by semantic relevance
-    if (search && processedJobs.length > 0) {
-      try {
-        logger.info(`Applying AI semantic matching to ${processedJobs.length} jobs for query: "${search}"`);
+      
+      // Parse sources JSON
+      let allProcessedJobs = allJobs.map(job => ({
+        ...job,
+        sources: job.sources_json ? JSON.parse(`[${job.sources_json}]`) : []
+      }));
+      
+      logger.info(`Applying AI semantic matching to ${allProcessedJobs.length} jobs for query: "${search}"`);
+      logger.info('AI is analyzing all jobs to find the best matches...');
+      
+      // Use a stricter similarity threshold (0.55) to filter out unrelated jobs
+      const minSimilarity = 0.55;
+      
+      // Score ALL jobs semantically and filter out low-similarity matches
+      const scoredJobs = await semanticMatcher.scoreJobs(search, allProcessedJobs, minSimilarity);
+      
+      if (scoredJobs.length === 0) {
+        logger.warn(`No jobs passed semantic similarity threshold (${minSimilarity}) for query: "${search}"`);
+        processedJobs = [];
+        totalCount = 0;
+      } else {
+        // Map and sort by semantic relevance (higher is better)
+        processedJobs = scoredJobs.map(job => ({
+          ...job,
+          combinedRelevanceScore: job.semanticScore
+        }));
         
-        // Use a stricter similarity threshold (0.55) to filter out unrelated jobs
-        // For example: "frontend" won't match "backend", "data analyst" won't match "developer"
-        // Adjust based on how strict you want matching (0.5 = looser, 0.6 = stricter)
-        const minSimilarity = 0.55;
+        // Sort by semantic relevance (higher is better)
+        processedJobs.sort((a, b) => {
+          // Primary: semantic score (higher is better)
+          const scoreDiff = b.semanticScore - a.semanticScore;
+          if (Math.abs(scoreDiff) > 0.01) {
+            return scoreDiff;
+          }
+          // Secondary: posted date (newer is better)
+          const dateA = new Date(a.posted_at || 0).getTime();
+          const dateB = new Date(b.posted_at || 0).getTime();
+          return dateB - dateA;
+        });
         
-        // Score jobs semantically and filter out low-similarity matches
-        const scoredJobs = await semanticMatcher.scoreJobs(search, processedJobs, minSimilarity);
+        totalCount = processedJobs.length;
         
-        if (scoredJobs.length === 0) {
-          // If no jobs pass semantic threshold, log warning but return empty
-          logger.warn(`No jobs passed semantic similarity threshold (${minSimilarity}) for query: "${search}"`);
-          processedJobs = [];
-        } else {
-          // All jobs already passed the similarity threshold, so use semantic score as primary ranking
-          // Sort by semantic score (highest first), then by posted date
-          processedJobs = scoredJobs.map(job => ({
-            ...job,
-            combinedRelevanceScore: job.semanticScore // Use semantic score directly as relevance
-          }));
-          
-          // Sort by semantic relevance (higher is better)
-          processedJobs.sort((a, b) => {
-            // Primary: semantic score (higher is better)
-            const scoreDiff = b.semanticScore - a.semanticScore;
-            if (Math.abs(scoreDiff) > 0.01) {
-              return scoreDiff;
-            }
-            // Secondary: posted date (newer is better)
-            const dateA = new Date(a.posted_at || 0).getTime();
-            const dateB = new Date(b.posted_at || 0).getTime();
-            return dateB - dateA;
-          });
-          
-          logger.info(`AI semantic matching completed. ${processedJobs.length} jobs passed threshold. Top job semantic score: ${processedJobs[0]?.semanticScore?.toFixed(3)}`);
-        }
-      } catch (error) {
-        logger.error('Error applying semantic matching, falling back to keyword matching:', error);
-        // Continue with keyword-matched results if semantic matching fails
+        // NOW apply pagination after AI filtering and ranking
+        const offset = (parseInt(page) - 1) * parseInt(limit);
+        processedJobs = processedJobs.slice(offset, offset + parseInt(limit));
+        
+        logger.info(`AI semantic matching completed. ${totalCount} jobs passed threshold, showing page ${page} (${processedJobs.length} jobs). Top job semantic score: ${processedJobs[0]?.semanticScore?.toFixed(3)}`);
       }
+    } else {
+      // No search query - apply pagination directly to SQL query
+      const offset = (parseInt(page) - 1) * parseInt(limit);
+      query += ` LIMIT ? OFFSET ?`;
+      params.push(parseInt(limit), offset);
+      
+      const jobs = await new Promise((resolve, reject) => {
+        db.all(query, params, (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows);
+        });
+      });
+      
+      // Parse sources JSON
+      processedJobs = jobs.map(job => ({
+        ...job,
+        sources: job.sources_json ? JSON.parse(`[${job.sources_json}]`) : []
+      }));
+      
+      // Get total count from count query (will be set below)
+      totalCount = null; // Will be set from count query
     }
     
     // Get total count for pagination
-    // Use only WHERE condition params (not ORDER BY or LIMIT/OFFSET params)
-    let countQuery = 'SELECT COUNT(DISTINCT j.id) as total FROM jobs j';
-    if (conditions.length > 0) {
-      countQuery += ' WHERE ' + conditions.join(' AND ');
-    }
-    
-    const countResult = await new Promise((resolve, reject) => {
-      // Only use params for WHERE conditions (exclude ORDER BY and pagination params)
-      const whereParams = params.slice(0, whereParamsCount);
-      db.get(countQuery, whereParams, (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
+    // For search queries, we already have the count from AI filtering
+    // For non-search queries, get count from database
+    let finalTotal;
+    if (search && totalCount !== null) {
+      // Use the count from AI-filtered results
+      finalTotal = totalCount;
+    } else {
+      // Get total count from database query
+      let countQuery = 'SELECT COUNT(DISTINCT j.id) as total FROM jobs j';
+      if (conditions.length > 0) {
+        countQuery += ' WHERE ' + conditions.join(' AND ');
+      }
+      
+      const countResult = await new Promise((resolve, reject) => {
+        // Only use params for WHERE conditions (exclude ORDER BY and pagination params)
+        const whereParams = params.slice(0, whereParamsCount);
+        db.get(countQuery, whereParams, (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        });
       });
-    });
+      
+      finalTotal = countResult.total;
+    }
     
     res.json({
       jobs: processedJobs,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
-        total: countResult.total,
-        totalPages: Math.ceil(countResult.total / parseInt(limit))
+        total: finalTotal,
+        totalPages: Math.ceil(finalTotal / parseInt(limit))
       }
     });
     
