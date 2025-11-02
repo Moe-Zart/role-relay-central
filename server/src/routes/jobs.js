@@ -538,4 +538,70 @@ router.get('/scraping/trigger', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/v1/jobs/by-ids
+ * Get jobs by their IDs (for fetching matched jobs)
+ */
+router.get('/by-ids', async (req, res) => {
+  try {
+    const { ids } = req.query;
+    
+    if (!ids) {
+      return res.status(400).json({ error: 'No job IDs provided' });
+    }
+    
+    const jobIds = typeof ids === 'string' ? ids.split(',') : ids;
+    
+    if (jobIds.length === 0) {
+      return res.json({ jobs: [], pagination: { page: 1, limit: jobIds.length, total: 0, totalPages: 0 } });
+    }
+    
+    const db = getDatabase();
+    const placeholders = jobIds.map(() => '?').join(',');
+    
+    const query = `
+      SELECT j.*, 
+             GROUP_CONCAT(
+               json_object(
+                 'site', js.site,
+                 'url', js.url,
+                 'postedAt', js.posted_at,
+                 'externalId', js.external_id
+               )
+             ) as sources_json
+      FROM jobs j
+      LEFT JOIN job_sources js ON j.id = js.job_id
+      WHERE j.id IN (${placeholders})
+      GROUP BY j.id
+      ORDER BY j.posted_at DESC
+    `;
+    
+    const jobs = await new Promise((resolve, reject) => {
+      db.all(query, jobIds, (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+    
+    // Parse sources JSON
+    const processedJobs = jobs.map(job => ({
+      ...job,
+      sources: job.sources_json ? JSON.parse(`[${job.sources_json}]`) : []
+    }));
+    
+    res.json({
+      jobs: processedJobs,
+      pagination: {
+        page: 1,
+        limit: processedJobs.length,
+        total: processedJobs.length,
+        totalPages: 1
+      }
+    });
+  } catch (error) {
+    logger.error('Error fetching jobs by IDs:', error);
+    res.status(500).json({ error: 'Failed to fetch jobs' });
+  }
+});
+
 export default router;

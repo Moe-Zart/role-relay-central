@@ -98,6 +98,15 @@ class JobApiService {
     return this.request<{ categories: Array<{ name: string; jobCount: number }> }>('/categories');
   }
 
+  async getJobsByIds(jobIds: string[]): Promise<JobsResponse> {
+    if (jobIds.length === 0) {
+      return { jobs: [], pagination: { page: 1, limit: 0, total: 0, totalPages: 0 } };
+    }
+    const params = new URLSearchParams();
+    params.set('ids', jobIds.join(','));
+    return this.request<JobsResponse>(`/jobs/by-ids?${params.toString()}`);
+  }
+
   async getJobStats(): Promise<JobStats> {
     return this.request<JobStats>('/jobs/stats');
   }

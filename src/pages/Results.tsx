@@ -71,22 +71,34 @@ const Results = () => {
           setMatchingProgress({ current: result.totalJobs, total: result.totalJobs, matched: result.matchedJobs });
           setIsMatchingJobs(false);
           
-          // Now fetch the matched jobs from the API
-          // The filtering will ensure only matched jobs (>=40%) are shown
-          fetchJobs(1).then(() => {
+          // Fetch ONLY the matched jobs by their IDs
+          const matchedIdsArray = Array.from(matchedIds);
+          if (matchedIdsArray.length > 0) {
+            try {
+              const matchedJobsResponse = await jobApiService.getJobsByIds(matchedIdsArray);
+              const matchedBundles = jobApiService.convertToJobBundles(matchedJobsResponse.jobs);
+              setJobBundles(matchedBundles);
+              
+              toast({
+                title: "Resume matching complete!",
+                description: `Found ${result.matchedJobs} matching jobs (>=40% match) out of ${result.totalJobs} total. Showing only matched jobs.`,
+                variant: "default"
+              });
+            } catch (error) {
+              console.error('Error fetching matched jobs:', error);
+              toast({
+                title: "Resume matching complete!",
+                description: `Found ${result.matchedJobs} matching jobs (>=40% match) out of ${result.totalJobs} total.`,
+                variant: "default"
+              });
+            }
+          } else {
             toast({
-              title: "Resume matching complete!",
-              description: `Found ${result.matchedJobs} matching jobs (>=40% match) out of ${result.totalJobs} total. Showing only matched jobs.`,
+              title: "No matches found",
+              description: `No jobs matched your resume (>=40% threshold). Try uploading a different resume or adjusting your search.`,
               variant: "default"
             });
-          }).catch(() => {
-            // If fetch fails, still show toast about matching
-            toast({
-              title: "Resume matching complete!",
-              description: `Found ${result.matchedJobs} matching jobs (>=40% match) out of ${result.totalJobs} total.`,
-              variant: "default"
-            });
-          });
+          }
         })
         .catch(error => {
           console.error('Error matching all jobs:', error);
