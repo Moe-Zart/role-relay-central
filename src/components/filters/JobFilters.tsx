@@ -25,7 +25,6 @@ export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersPr
     workMode: true,
     category: true,
     experience: true,
-    salary: true,
     posted: true,
     company: true
   });
@@ -66,8 +65,6 @@ export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersPr
       category: "all",
       distance: 50,
       experience: [],
-      salaryMin: undefined,
-      salaryMax: undefined,
       postedWithin: "",
       company: ""
     });
@@ -169,37 +166,6 @@ export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersPr
                 <Label htmlFor={level}>{level}</Label>
               </div>
             ))}
-          </div>
-        </FilterSection>
-
-        <FilterSection title="Salary Range (AUD)" section="salary">
-          <div className="space-y-3">
-            <div>
-              <Label htmlFor="salaryMin">Minimum</Label>
-              <Input 
-                id="salaryMin"
-                type="number"
-                placeholder="50000"
-                value={filters.salaryMin || ""}
-                onChange={(e) => updateFilters({ 
-                  salaryMin: e.target.value ? parseInt(e.target.value) : undefined 
-                })}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label htmlFor="salaryMax">Maximum</Label>
-              <Input 
-                id="salaryMax"
-                type="number"
-                placeholder="150000"
-                value={filters.salaryMax || ""}
-                onChange={(e) => updateFilters({ 
-                  salaryMax: e.target.value ? parseInt(e.target.value) : undefined 
-                })}
-                className="mt-1"
-              />
-            </div>
           </div>
         </FilterSection>
 

@@ -17,7 +17,7 @@ import { formatDistanceToNow } from "date-fns";
 
 const Results = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [sortBy, setSortBy] = useState("relevance");
+  const [sortBy, setSortBy] = useState("newest");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<JobBundle | null>(null);
   const [savedJobs, setSavedJobs] = useState<string[]>([]);
@@ -146,14 +146,12 @@ const Results = () => {
       switch (sortBy) {
         case "newest":
           return new Date(b.canonicalJob.postedAt).getTime() - new Date(a.canonicalJob.postedAt).getTime();
-        case "salary-high":
-          return (b.canonicalJob.salaryMax || 0) - (a.canonicalJob.salaryMax || 0);
-        case "salary-low":
-          return (a.canonicalJob.salaryMin || 0) - (b.canonicalJob.salaryMin || 0);
-        case "company":
+        case "company-a-z":
           return a.canonicalJob.company.localeCompare(b.canonicalJob.company);
+        case "company-z-a":
+          return b.canonicalJob.company.localeCompare(a.canonicalJob.company);
         default:
-          return 0; // relevance - keep original order
+          return new Date(b.canonicalJob.postedAt).getTime() - new Date(a.canonicalJob.postedAt).getTime(); // Default to newest
       }
     });
 
@@ -184,8 +182,7 @@ const Results = () => {
     { label: "Remote", active: filters.workMode.includes("Remote") },
     { label: "On-site", active: filters.workMode.includes("On-site") },
     { label: "Hybrid", active: filters.workMode.includes("Hybrid") },
-    { label: "Posted in last 7 days", active: filters.postedWithin === "7d" },
-    { label: "Has salary", active: true }
+    { label: "Posted in last 7 days", active: filters.postedWithin === "7d" }
   ];
 
   return (
@@ -207,11 +204,9 @@ const Results = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="relevance">Relevance</SelectItem>
                       <SelectItem value="newest">Newest</SelectItem>
-                      <SelectItem value="salary-high">Salary (High→Low)</SelectItem>
-                      <SelectItem value="salary-low">Salary (Low→High)</SelectItem>
-                      <SelectItem value="company">Company A→Z</SelectItem>
+                      <SelectItem value="company-a-z">Company A→Z</SelectItem>
+                      <SelectItem value="company-z-a">Company Z→A</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
