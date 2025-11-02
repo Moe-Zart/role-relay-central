@@ -102,7 +102,7 @@ const Results = () => {
         });
       }
     }
-  }, [parsedResume, jobBundles.length, getMatchForJob, setJobMatches, isMatchingJobs]);
+  }, [parsedResume, jobBundles, getMatchForJob, setJobMatches, isMatchingJobs]);
 
   const formatTimeAgo = (dateString: string) => {
     try {
