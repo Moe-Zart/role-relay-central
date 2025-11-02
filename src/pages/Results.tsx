@@ -48,7 +48,7 @@ const Results = () => {
       
       if (needsMatching) {
         setIsMatchingJobs(true);
-        logger.info(`Matching ${jobBundles.length} jobs to resume...`);
+        console.log(`Matching ${jobBundles.length} jobs to resume...`);
         
         // Match all jobs in batches (process 10 at a time to avoid overwhelming the server)
         const batchSize = 10;
