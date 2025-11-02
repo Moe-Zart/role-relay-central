@@ -103,12 +103,13 @@ const Results = () => {
                 }
                 
                 setJobBundles(matchedBundles);
-              
-              toast({
-                title: "Resume matching complete!",
-                description: `Found ${result.matchedJobs} matching jobs (>=40% match) out of ${result.totalJobs} total. Showing only matched jobs.`,
-                variant: "default"
-              });
+                
+                toast({
+                  title: "Resume matching complete!",
+                  description: `Found ${result.matchedJobs} matching jobs (>=40% match) out of ${result.totalJobs} total. Showing only matched jobs.`,
+                  variant: "default"
+                });
+              }
             } catch (error) {
               console.error('Error fetching matched jobs:', error);
               toast({
