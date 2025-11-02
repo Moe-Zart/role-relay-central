@@ -1,17 +1,20 @@
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
-import { SlidersHorizontal, ArrowUpDown, Menu, X, Loader2, Clock, Sparkles } from "lucide-react";
+import { SlidersHorizontal, ArrowUpDown, Menu, X, Loader2, Clock, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { SearchForm } from "@/components/search/SearchForm";
 import { JobFilters } from "@/components/filters/JobFilters";
 import { JobCard } from "@/components/jobs/JobCard";
+import { ResumeUpload } from "@/components/upload/ResumeUpload";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { SearchFilters, JobBundle } from "@/types/jobs";
 import { jobApiService } from "@/services/jobApi";
+import { resumeService } from "@/services/resumeService";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { useResume } from "@/contexts/ResumeContext";
@@ -33,8 +36,73 @@ const Results = () => {
     totalPages: 0
   });
   const { toast } = useToast();
-  const { parsedResume, getMatchForJob } = useResume();
+  const { parsedResume, getMatchForJob, setJobMatches } = useResume();
   const resumeMatchParam = searchParams.get('resumeMatch');
+  const [isMatchingJobs, setIsMatchingJobs] = useState(false);
+  
+  // Match all jobs when resume exists and jobs are loaded
+  useEffect(() => {
+    if (parsedResume && jobBundles.length > 0 && !isMatchingJobs) {
+      // Check if we need to match (if matches don't exist for current jobs)
+      const needsMatching = jobBundles.some(bundle => !getMatchForJob(bundle.canonicalJob.id));
+      
+      if (needsMatching) {
+        setIsMatchingJobs(true);
+        logger.info(`Matching ${jobBundles.length} jobs to resume...`);
+        
+        // Match all jobs in batches (process 10 at a time to avoid overwhelming the server)
+        const batchSize = 10;
+        const allMatches = new Map<string, any>();
+        
+        const processBatch = async (batch: typeof jobBundles) => {
+          const matchPromises = batch.map(bundle => {
+            const existingMatch = getMatchForJob(bundle.canonicalJob.id);
+            if (existingMatch) {
+              return Promise.resolve({ jobId: bundle.canonicalJob.id, match: existingMatch });
+            }
+            
+            return resumeService.matchSingleJob(parsedResume, {
+              id: bundle.canonicalJob.id,
+              title: bundle.canonicalJob.title,
+              company: bundle.canonicalJob.company,
+              experience: bundle.canonicalJob.experience,
+              description_snippet: bundle.canonicalJob.descriptionSnippet,
+              description_full: bundle.canonicalJob.descriptionFull
+            }).then(result => ({
+              jobId: bundle.canonicalJob.id,
+              match: result.matchDetails
+            })).catch((error) => {
+              console.error(`Error matching job ${bundle.canonicalJob.id}:`, error);
+              return null;
+            });
+          });
+          
+          const results = await Promise.all(matchPromises);
+          results.forEach(result => {
+            if (result && result.match) {
+              allMatches.set(result.jobId, result.match);
+            }
+          });
+        };
+        
+        // Process in batches
+        (async () => {
+          for (let i = 0; i < jobBundles.length; i += batchSize) {
+            const batch = jobBundles.slice(i, i + batchSize);
+            await processBatch(batch);
+          }
+          
+          // Update all matches at once
+          setJobMatches(allMatches);
+          setIsMatchingJobs(false);
+          console.log(`Matched ${allMatches.size} jobs to resume`);
+        })().catch(error => {
+          console.error('Error matching jobs:', error);
+          setIsMatchingJobs(false);
+        });
+      }
+    }
+  }, [parsedResume, jobBundles.length, getMatchForJob, setJobMatches, isMatchingJobs]);
 
   const formatTimeAgo = (dateString: string) => {
     try {
@@ -268,6 +336,28 @@ const Results = () => {
       
       {/* Main Content */}
       <div className="container mx-auto px-4 py-6">
+        {/* Resume Upload Section - Compact */}
+        <div className="mb-6">
+          <Collapsible defaultOpen={!parsedResume}>
+            <div className="space-y-4">
+              <CollapsibleTrigger asChild>
+                <Button variant="outline" className="w-full justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Sparkles className="h-4 w-4" />
+                    <span>{parsedResume ? 'Resume Uploaded ✓ - Click to View/Change' : 'Upload Resume for AI-Powered Job Matching'}</span>
+                  </div>
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-4">
+                <div className="border rounded-lg p-4 bg-card">
+                  <ResumeUpload compact={true} />
+                </div>
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
+        </div>
+        
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Filters Sidebar - Desktop */}
           <div className="hidden lg:block lg:col-span-1">
@@ -302,7 +392,7 @@ const Results = () => {
                     <div className="flex items-center space-x-2 mt-1">
                       <Sparkles className="h-4 w-4 text-primary" />
                       <span className="text-sm text-muted-foreground">
-                        Jobs are matched to your resume
+                        {isMatchingJobs ? 'Matching jobs to your resume...' : 'Jobs are matched to your resume'}
                       </span>
                     </div>
                   )}

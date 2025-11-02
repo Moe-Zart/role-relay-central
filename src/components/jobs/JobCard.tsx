@@ -20,7 +20,7 @@ interface JobCardProps {
 export const JobCard = ({ bundle, onSave, onView, saved = false, resumeMatch: propResumeMatch }: JobCardProps) => {
   const { canonicalJob, duplicates } = bundle;
   const [imageError, setImageError] = useState(false);
-  const { parsedResume, getMatchForJob, setJobMatches } = useResume();
+  const { parsedResume, getMatchForJob, addJobMatch } = useResume();
   const [resumeMatch, setResumeMatch] = useState<ResumeMatchDetails | null>(propResumeMatch || null);
   const [isMatching, setIsMatching] = useState(false);
   
@@ -42,17 +42,18 @@ export const JobCard = ({ bundle, onSave, onView, saved = false, resumeMatch: pr
           description_full: canonicalJob.descriptionFull
         }).then(result => {
           setResumeMatch(result.matchDetails);
-          // Cache in context
-          const matches = new Map();
-          matches.set(canonicalJob.id, result.matchDetails);
-          setJobMatches(matches);
+          // Cache in context (adds to existing matches)
+          addJobMatch(canonicalJob.id, result.matchDetails);
           setIsMatching(false);
-        }).catch(() => {
+        }).catch((error) => {
+          console.error('Error matching job:', error);
           setIsMatching(false);
         });
       }
+    } else if (propResumeMatch) {
+      setResumeMatch(propResumeMatch);
     }
-  }, [parsedResume, canonicalJob.id, propResumeMatch, getMatchForJob, setJobMatches, isMatching]);
+  }, [parsedResume, canonicalJob.id, propResumeMatch, getMatchForJob, addJobMatch, isMatching]);
   
   const allSources = [
     ...canonicalJob.sources,

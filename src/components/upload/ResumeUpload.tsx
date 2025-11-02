@@ -7,10 +7,11 @@ import { useResume } from "@/contexts/ResumeContext";
 import { resumeService } from "@/services/resumeService";
 import { useToast } from "@/hooks/use-toast";
 
-export const ResumeUpload = () => {
+export const ResumeUpload = ({ compact = false }: { compact?: boolean }) => {
   const { 
     parsedResume, 
     setParsedResume, 
+    setJobMatches,
     isProcessing, 
     setIsProcessing,
     processingMessage,
@@ -94,8 +95,17 @@ export const ResumeUpload = () => {
       setUploadProgress('matching');
       setProcessingMessage('AI is matching your resume to available jobs...');
 
-      // Step 2: Match to jobs
+      // Step 2: Match to jobs (this stores matches in context/localStorage)
       const matchResult = await resumeService.matchResumeToJobs(uploadResult.parsedResume);
+
+      // Store all matches in context
+      const matchesMap = new Map();
+      matchResult.matchedJobs.forEach(job => {
+        if (job.resumeMatch) {
+          matchesMap.set(job.id, job.resumeMatch);
+        }
+      });
+      setJobMatches(matchesMap);
 
       setUploadProgress('complete');
       setIsProcessing(false);
@@ -107,8 +117,13 @@ export const ResumeUpload = () => {
         variant: "default"
       });
 
-      // Navigate to results page with resume-matched jobs
-      window.location.href = '/results?resumeMatch=true';
+      // Navigate to results page only if not in compact mode and not already on results
+      if (!compact && window.location.pathname !== '/results') {
+        window.location.href = '/results?resumeMatch=true';
+      } else if (compact) {
+        // In compact mode, refresh the page to show matched jobs
+        window.location.reload();
+      }
     } catch (error: any) {
       console.error('Resume upload error:', error);
       setIsProcessing(false);
@@ -139,6 +154,110 @@ export const ResumeUpload = () => {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
+
+  if (compact) {
+    // Compact version for Results page
+    return (
+      <div className="space-y-4">
+        {!uploadedFile && !parsedResume ? (
+          <div
+            onDragEnter={handleDrag}
+            onDragLeave={handleDrag}
+            onDragOver={handleDrag}
+            onDrop={handleDrop}
+            className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+              dragActive 
+                ? "border-primary bg-primary/5" 
+                : "border-border hover:border-primary/50"
+            }`}
+          >
+            <Upload className="mx-auto h-8 w-8 text-muted-foreground mb-3" />
+            <div className="space-y-2">
+              <p className="text-sm font-medium">
+                Drag and drop your resume here
+              </p>
+              <p className="text-xs text-muted-foreground">or</p>
+              <Button variant="outline" size="sm" className="relative" disabled={isProcessing}>
+                Browse file
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={handleFileInput}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  disabled={isProcessing}
+                />
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                PDF only (max 10MB)
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {/* File Info - Compact */}
+            <div className="border rounded-lg p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  {isProcessing ? (
+                    <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                  ) : (
+                    <FileText className="h-5 w-5 text-primary" />
+                  )}
+                  <div>
+                    <p className="text-sm font-medium">{uploadedFile?.name || 'Resume processed'}</p>
+                  </div>
+                </div>
+                {!isProcessing && (
+                  <div className="flex items-center space-x-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <Button variant="ghost" size="sm" onClick={handleRemoveResume}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Processing Status - Compact */}
+            {isProcessing && (
+              <div className="border rounded-lg p-3 bg-muted/50">
+                <div className="flex items-center space-x-2">
+                  <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+                  <div className="flex-1">
+                    <p className="text-xs font-medium">AI Processing</p>
+                    <p className="text-xs text-muted-foreground">{processingMessage}</p>
+                  </div>
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                </div>
+              </div>
+            )}
+
+            {/* Resume Summary - Compact */}
+            {parsedResume && !isProcessing && (
+              <div className="border rounded-lg p-3 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Experience:</span>
+                  <Badge variant="secondary" className="text-xs">{parsedResume.experienceLevel}</Badge>
+                </div>
+                {parsedResume.skills.length > 0 && (
+                  <div>
+                    <p className="text-muted-foreground mb-1">Top Skills:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {parsedResume.skills.slice(0, 5).map((skill, idx) => (
+                        <Badge key={idx} variant="outline" className="text-xs">
+                          {skill}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <Card className="w-full max-w-2xl mx-auto">
