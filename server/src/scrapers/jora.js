@@ -9,18 +9,38 @@ export class JoraScraper {
   }
 
   // Scrape using EXACT URL provided by user - no modifications
+  // But also run separate searches for diversity since OR queries can rank certain terms too high
   async scrapeWithExactUrl(location = 'Sydney NSW', maxPages = 10) {
     const jobs = [];
     const seen = new Set();
     
     try {
-      // Use the EXACT URL as provided - no keyword manipulation
-      // This URL searches for: developer, programmer, software engineer, frontend, backend, data, analyst, cloud, cybersecurity, web, IT
+      // Strategy: Run the exact URL search, but also run separate targeted searches
+      // to get more diverse results since Jora may rank "software engineer" too high in OR queries
+      
+      // 1. Original exact URL with all terms (for completeness)
       const exactBaseUrl = 'https://au.jora.com/j?a=14d&disallow=true&l=Sydney+NSW&q=%22developer%22+OR+%22programmer%22+OR+%22software+engineer%22+OR+%22frontend%22+OR+%22backend%22+OR+%22data%22+OR+%22analyst%22+OR+%22cloud%22+OR+%22cybersecurity%22+OR+%22web%22+OR+%22IT%22&sa=70000&sp=facet_listed_date';
       
-      logger.info(`Jora: Using EXACT URL with all search terms: developer, programmer, software engineer, frontend, backend, data, analyst, cloud, cybersecurity, web, IT`);
+      // 2. Separate searches for non-engineer terms to ensure diversity
+      // These separate searches help balance results since the OR query ranks "software engineer" too high
+      const searchTerms = [
+        { name: 'developer', query: '%22developer%22', pages: 3 },
+        { name: 'designer', query: '%22designer%22', pages: 2 },
+        { name: 'analyst', query: '%22analyst%22+OR+%22data+analyst%22', pages: 3 },
+        { name: 'programmer', query: '%22programmer%22', pages: 2 },
+        { name: 'frontend-developer', query: '%22frontend+developer%22+OR+%22front-end+developer%22', pages: 2 },
+        { name: 'backend-developer', query: '%22backend+developer%22+OR+%22back-end+developer%22', pages: 2 },
+        { name: 'cloud-engineer', query: '%22cloud%22+OR+%22aws%22+OR+%22azure%22', pages: 2 },
+        { name: 'cybersecurity', query: '%22cybersecurity%22+OR+%22security+analyst%22', pages: 2 },
+        { name: 'web-developer', query: '%22web+developer%22', pages: 2 },
+        { name: 'IT-support', query: '%22IT+support%22+OR+%22IT+technician%22', pages: 2 }
+      ];
       
-      for (let page = 1; page <= maxPages; page++) {
+      logger.info(`Jora: Running diversified search strategy - exact URL + separate term searches for better diversity`);
+      
+      // First, run the exact URL search (reduced pages since we're adding separate searches)
+      const exactUrlPages = Math.min(5, Math.floor(maxPages / 2));
+      for (let page = 1; page <= exactUrlPages; page++) {
         // Build URL based on Jora's pagination pattern:
         // Page 1: Base URL as provided
         // Page 2: sp=search&trigger_source=serp format
@@ -172,7 +192,74 @@ export class JoraScraper {
         await this.delay(1000);
       }
       
-      logger.info(`Jora: Collected ${jobs.length} jobs from exact URL (no filtering, all job types)`);
+      logger.info(`Jora: Collected ${jobs.length} jobs from exact URL search`);
+      
+      // Now run separate targeted searches for diversity
+      for (const searchTerm of searchTerms) {
+        logger.info(`Jora: Running separate search for "${searchTerm.name}" (${searchTerm.pages} pages)`);
+        
+        for (let page = 1; page <= searchTerm.pages; page++) {
+          let url = '';
+          if (page === 1) {
+            url = `https://au.jora.com/j?a=14d&disallow=true&l=${encodeURIComponent(location)}&q=${searchTerm.query}&sa=70000&sp=facet_listed_date`;
+          } else if (page === 2) {
+            url = `https://au.jora.com/j?sp=search&trigger_source=serp&a=14d&q=${searchTerm.query}&l=${encodeURIComponent(location)}`;
+          } else {
+            url = `https://au.jora.com/j?a=14d&disallow=true&l=${encodeURIComponent(location)}&p=${page}&q=${searchTerm.query}&sp=search&surl=0&trigger_source=serp`;
+          }
+          
+          logger.info(`Jora: Scraping "${searchTerm.name}" page ${page}: ${url}`);
+          const pageJobs = await this.scrapeExactUrlPage(url);
+          
+          logger.info(`Jora: Found ${pageJobs.length} jobs for "${searchTerm.name}" page ${page}`);
+          
+          // Add jobs with deduplication
+          let addedForTerm = 0;
+          for (const job of pageJobs) {
+            const jobUrl = job.sources?.[0]?.url || '';
+            const externalId = job.sources?.[0]?.externalId || '';
+            
+            let key = '';
+            if (jobUrl) {
+              const hashMatch = jobUrl.match(/-([a-f0-9]{32})(?:\?|$)/);
+              if (hashMatch) {
+                key = hashMatch[1].toLowerCase();
+              } else {
+                const pathMatch = jobUrl.match(/\/job\/[^?]+-([a-zA-Z0-9]+)(?:\?|$)/);
+                if (pathMatch && pathMatch[1].length >= 16) {
+                  key = pathMatch[1].toLowerCase();
+                } else {
+                  key = jobUrl.split('?')[0].toLowerCase().trim();
+                }
+              }
+            } else if (externalId) {
+              key = externalId.toLowerCase().trim();
+            } else {
+              const normalizedTitle = (job.title || '').toLowerCase().trim().replace(/\s+/g, ' ');
+              const normalizedCompany = (job.company || '').toLowerCase().trim().replace(/\s+/g, ' ');
+              key = `${normalizedTitle}|${normalizedCompany}`.toLowerCase().trim();
+            }
+            
+            if (!key) continue;
+            
+            if (!seen.has(key)) {
+              seen.add(key);
+              jobs.push(job);
+              addedForTerm++;
+            }
+          }
+          
+          logger.info(`Jora: "${searchTerm.name}" page ${page} - Added ${addedForTerm} new jobs`);
+          
+          if (pageJobs.length === 0) break;
+          
+          await this.delay(1000);
+        }
+        
+        logger.info(`Jora: Completed "${searchTerm.name}" search, total jobs so far: ${jobs.length}`);
+      }
+      
+      logger.info(`Jora: Collected ${jobs.length} total jobs from all searches (exact URL + separate term searches)`);
       return jobs;
     } catch (err) {
       logger.error('Jora scrape with exact URL failed:', err);
