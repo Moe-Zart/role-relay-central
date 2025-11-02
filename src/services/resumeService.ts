@@ -1,5 +1,3 @@
-import axios from 'axios';
-
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
 
 export interface ParsedResume {
@@ -56,8 +54,10 @@ class ResumeService {
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         ...options,
         headers: {
+          'Content-Type': 'application/json',
           ...options.headers,
         },
+        credentials: 'include', // Include credentials for CORS
       });
 
       if (!response.ok) {
@@ -79,13 +79,24 @@ class ResumeService {
     const formData = new FormData();
     formData.append('resume', file);
 
-    const response = await axios.post(`${API_BASE_URL}/resume/upload`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    try {
+      const response = await fetch(`${API_BASE_URL}/resume/upload`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include', // Include credentials for CORS
+        // Don't set Content-Type header - browser will set it with boundary for multipart/form-data
+      });
 
-    return response.data;
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error(error.error || `HTTP error! status: ${response.status}`);
+      }
+
+      return response.json();
+    } catch (error) {
+      console.error('Resume upload failed:', error);
+      throw error;
+    }
   }
 
   /**
