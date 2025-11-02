@@ -317,48 +317,6 @@ router.get('/jobs', async (req, res) => {
   }
 });
 
-// Get job by ID
-router.get('/jobs/:id', async (req, res) => {
-  try {
-    const db = getDatabase();
-    const { id } = req.params;
-    
-    const job = await new Promise((resolve, reject) => {
-      db.get(`
-        SELECT j.*, 
-               GROUP_CONCAT(
-                 json_object(
-                   'site', js.site,
-                   'url', js.url,
-                   'postedAt', js.posted_at,
-                   'externalId', js.external_id
-                 )
-               ) as sources_json
-        FROM jobs j
-        LEFT JOIN job_sources js ON j.id = js.job_id
-        WHERE j.id = ?
-        GROUP BY j.id
-      `, [id], (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
-      });
-    });
-    
-    if (!job) {
-      return res.status(404).json({ error: 'Job not found' });
-    }
-    
-    job.sources = job.sources_json ? JSON.parse(`[${job.sources_json}]`) : [];
-    
-    res.json(job);
-    
-  } catch (error) {
-    logger.error('Error fetching job:', error);
-    res.status(500).json({ error: 'Failed to fetch job' });
-  }
-});
-
-// Get job statistics
 /**
  * GET /api/v1/jobs/by-ids
  * Get jobs by their IDs (for fetching matched jobs)
@@ -426,6 +384,48 @@ router.get('/jobs/by-ids', async (req, res) => {
   }
 });
 
+// Get job by ID
+router.get('/jobs/:id', async (req, res) => {
+  try {
+    const db = getDatabase();
+    const { id } = req.params;
+    
+    const job = await new Promise((resolve, reject) => {
+      db.get(`
+        SELECT j.*, 
+               GROUP_CONCAT(
+                 json_object(
+                   'site', js.site,
+                   'url', js.url,
+                   'postedAt', js.posted_at,
+                   'externalId', js.external_id
+                 )
+               ) as sources_json
+        FROM jobs j
+        LEFT JOIN job_sources js ON j.id = js.job_id
+        WHERE j.id = ?
+        GROUP BY j.id
+      `, [id], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+    
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    
+    job.sources = job.sources_json ? JSON.parse(`[${job.sources_json}]`) : [];
+    
+    res.json(job);
+    
+  } catch (error) {
+    logger.error('Error fetching job:', error);
+    res.status(500).json({ error: 'Failed to fetch job' });
+  }
+});
+
+// Get job statistics
 router.get('/jobs/stats', async (req, res) => {
   try {
     const db = getDatabase();
