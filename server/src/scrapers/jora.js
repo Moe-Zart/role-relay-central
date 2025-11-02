@@ -490,53 +490,90 @@ export class JoraScraper {
         if (!descEl.length) descEl = $el.find('.job-abstract, .job-snippet, .job-description, .description').first();
         const description = descEl.text().trim() || '';
 
-        // Try multiple selectors for posted date - Jora shows "18h ago, from eFinancialCareers"
+        // Extract posted date - Jora format: "10d ago, from Prosple" or "18h ago, from eFinancialCareers"
+        // Strategy: Get ALL text from the job card and extract the date pattern
+        let postedAt = null;
+        let postedText = null;
+        
+        // First, try to find a specific date element
         let postedEl = $el.find('[data-automation="job-date"]').first();
         if (!postedEl.length) postedEl = $el.find('time').first();
         if (!postedEl.length) postedEl = $el.find('[class*="date"], [class*="ago"]').first();
-        if (!postedEl.length) postedEl = $el.find('[class*="posted"], [class*="listed"]').first();
-        // Try finding text that contains "ago" - this is Jora's format
-        if (!postedEl.length) {
-          $el.find('*').each((_, elem) => {
-            const $elem = $(elem);
-            const text = $elem.text();
-            if (text && text.includes('ago')) {
-              postedEl = $elem;
-              return false; // break
-            }
-          });
-        }
         
         // Try to get date from datetime attribute first (most reliable)
-        let postedAt = null;
         const datetimeAttr = postedEl.attr('datetime') || postedEl.attr('data-date') || postedEl.attr('title');
         
         if (datetimeAttr) {
           // Parse ISO date string if available
           postedAt = new Date(datetimeAttr).toISOString();
+          logger.debug(`Jora: Found datetime attribute: ${datetimeAttr} for job: ${title}`);
         } else {
-          // Extract the posted date text - Jora format: "18h ago, from eFinancialCareers" or "3 days ago"
-          let postedText = postedEl.text().trim();
-          
-          // Extract just the time part before comma (e.g., "18h ago, from eFinancialCareers" -> "18h ago")
-          if (postedText.includes(',')) {
-            postedText = postedText.split(',')[0].trim();
+          // Extract posted date text from element or entire job card
+          if (postedEl.length) {
+            postedText = postedEl.text().trim();
           }
           
-          // Also try getting from parent if it contains "ago"
-          if (!postedText || !postedText.includes('ago')) {
-            const parentText = $el.parent().text();
-            if (parentText && parentText.includes('ago')) {
-              // Extract the part with "ago" from parent
-              const agoMatch = parentText.match(/(\d+[hd]\s*ago|\d+\s*(?:hours?|days?|weeks?|months?)\s*ago)/i);
-              if (agoMatch) {
-                postedText = agoMatch[1];
+          // If no element found or no text, search entire job card for date pattern
+          if (!postedText || !postedText.match(/\d+[hd]\s*ago|\d+\s*(?:hours?|days?|weeks?|months?)\s*ago/i)) {
+            const fullJobCardText = $el.text();
+            
+            // Extract date pattern from entire job card text
+            // Patterns: "10d ago", "18h ago", "3 days ago", "2 weeks ago", etc.
+            const datePatterns = [
+              /\d+[hd]\s*ago/i,  // "10d ago" or "18h ago"
+              /\d+\s*hours?\s*ago/i,  // "18 hours ago"
+              /\d+\s*days?\s*ago/i,    // "10 days ago"
+              /\d+\s*weeks?\s*ago/i,   // "2 weeks ago"
+              /\d+\s*months?\s*ago/i   // "3 months ago"
+            ];
+            
+            for (const pattern of datePatterns) {
+              const match = fullJobCardText.match(pattern);
+              if (match) {
+                // Extract the matched text and clean it
+                postedText = match[0].trim();
+                // Remove anything after comma if present (like ", from Prosple")
+                if (fullJobCardText.includes(',')) {
+                  const beforeComma = fullJobCardText.substring(0, fullJobCardText.indexOf(','));
+                  const matchInBeforeComma = beforeComma.match(pattern);
+                  if (matchInBeforeComma) {
+                    postedText = matchInBeforeComma[0].trim();
+                  }
+                }
+                break;
               }
             }
+            
+            // If still no match, try finding element with "ago" text
+            if (!postedText) {
+              $el.find('*').each((_, elem) => {
+                const $elem = $(elem);
+                const elemText = $elem.text().trim();
+                if (elemText && elemText.match(/\d+[hd]\s*ago|\d+\s*(?:hours?|days?|weeks?|months?)\s*ago/i)) {
+                  postedText = elemText;
+                  // Extract just the date part before comma
+                  if (postedText.includes(',')) {
+                    postedText = postedText.split(',')[0].trim();
+                  }
+                  return false; // break
+                }
+              });
+            }
+          } else {
+            // Clean the extracted text - remove "from X" suffix and comma-separated content
+            if (postedText.includes(',')) {
+              postedText = postedText.split(',')[0].trim();
+            }
+            postedText = postedText.replace(/\s+from\s+.*$/i, '').trim();
           }
           
-          logger.debug(`Jora: Extracted posted date text: "${postedText}" for job: ${title}`);
-          postedAt = this.parsePostedDate(postedText);
+          if (postedText) {
+            logger.info(`Jora: Extracted posted date text: "${postedText}" for job: "${title}" at ${company}`);
+            postedAt = this.parsePostedDate(postedText);
+            if (postedAt) {
+              logger.debug(`Jora: Parsed to ISO date: ${postedAt}`);
+            }
+          }
         }
 
         // Extract hash from Jora URL format: /job/Job-Title-hash32chars
@@ -614,23 +651,28 @@ export class JoraScraper {
     // Remove "from X" suffix if present
     text = text.replace(/\s+from\s+.*$/i, '').trim();
     
+    const originalText = text;
     text = text.toLowerCase();
     const now = new Date();
     
-    // Match patterns like "18h ago", "3d ago", "X hours ago", "X days ago", etc.
-    // Handle "Xh ago" format (common on Jora)
-    const hourMatch = text.match(/(\d+)\s*h\s*ago/);
-    if (hourMatch) {
-      const hours = parseInt(hourMatch[1]);
-      const date = new Date(now.getTime() - hours * 60 * 60 * 1000);
-      return date.toISOString();
-    }
+    logger.debug(`Jora: parsePostedDate - Input: "${dateText}", Cleaned: "${originalText}"`);
     
-    // Handle "Xd ago" format (days abbreviation)
+    // IMPORTANT: Match days BEFORE hours to avoid "10d" being misinterpreted
+    // Handle "Xd ago" format (days abbreviation) - MUST check before hours
     const dayAbbrMatch = text.match(/(\d+)\s*d\s*ago/);
     if (dayAbbrMatch) {
       const days = parseInt(dayAbbrMatch[1]);
       const date = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      logger.debug(`Jora: Parsed "${originalText}" as ${days} days ago -> ${date.toISOString()}`);
+      return date.toISOString();
+    }
+    
+    // Handle "Xh ago" format (hours abbreviation)
+    const hourMatch = text.match(/(\d+)\s*h\s*ago/);
+    if (hourMatch) {
+      const hours = parseInt(hourMatch[1]);
+      const date = new Date(now.getTime() - hours * 60 * 60 * 1000);
+      logger.debug(`Jora: Parsed "${originalText}" as ${hours} hours ago -> ${date.toISOString()}`);
       return date.toISOString();
     }
     
