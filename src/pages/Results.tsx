@@ -73,10 +73,21 @@ const Results = () => {
           
           // Fetch ONLY the matched jobs by their IDs
           const matchedIdsArray = Array.from(matchedIds);
+          console.log(`Fetching ${matchedIdsArray.length} matched jobs by IDs:`, matchedIdsArray.slice(0, 5), '...');
+          
           if (matchedIdsArray.length > 0) {
             try {
               const matchedJobsResponse = await jobApiService.getJobsByIds(matchedIdsArray);
+              console.log(`✅ Fetched ${matchedJobsResponse.jobs.length} jobs from API`);
+              
               const matchedBundles = jobApiService.convertToJobBundles(matchedJobsResponse.jobs);
+              console.log(`✅ Converted to ${matchedBundles.length} job bundles`);
+              
+              // Log job IDs for debugging
+              const fetchedJobIds = matchedBundles.map(b => b.canonicalJob.id);
+              console.log(`Fetched job IDs:`, fetchedJobIds.slice(0, 5));
+              console.log(`Matched job IDs set:`, Array.from(matchedIds).slice(0, 5));
+              
               setJobBundles(matchedBundles);
               
               toast({
@@ -93,6 +104,7 @@ const Results = () => {
               });
             }
           } else {
+            console.warn('No matched job IDs to fetch');
             toast({
               title: "No matches found",
               description: `No jobs matched your resume (>=40% threshold). Try uploading a different resume or adjusting your search.`,
@@ -213,12 +225,15 @@ const Results = () => {
   };
 
   // Fetch jobs when filters change (only if not matching or if matching is complete)
+  // BUT: Don't fetch if resume is present - matched jobs are already loaded
   useEffect(() => {
-    // Don't fetch if we're currently matching - wait for matching to complete
-    if (!isMatchingJobs) {
+    // Don't fetch if:
+    // 1. Currently matching (wait for matching to complete)
+    // 2. Resume is present (matched jobs are already loaded by the matching effect)
+    if (!isMatchingJobs && !parsedResume) {
       fetchJobs(1);
     }
-  }, [filters, isMatchingJobs]);
+  }, [filters, isMatchingJobs, parsedResume]);
 
   // Update URL when filters change
   useEffect(() => {
@@ -238,6 +253,8 @@ const Results = () => {
 
     // If resume is present and matching is complete, STRICTLY filter to only show matched jobs
     if (parsedResume && matchedJobIds.size > 0 && !isMatchingJobs) {
+      console.log(`Filtering ${filtered.length} jobs. Matched job IDs set size: ${matchedJobIds.size}`);
+      
       // STRICT FILTER: Only show jobs that:
       // 1. Are in the matchedJobIds set (matched by backend)
       // 2. Have a match record with percentage > 0
@@ -245,13 +262,20 @@ const Results = () => {
       filtered = filtered.filter(bundle => {
         const jobId = bundle.canonicalJob.id;
         const match = getMatchForJob(jobId);
+        const inMatchedSet = matchedJobIds.has(jobId);
+        const hasMatch = match && match.matchPercentage > 0;
+        const meetsThreshold = match && match.matchPercentage >= 40;
+        
+        // Debug logging for first few jobs
+        if (bundle === filtered[0] || bundle === filtered[1]) {
+          console.log(`Job ${jobId}: inMatchedSet=${inMatchedSet}, hasMatch=${hasMatch}, meetsThreshold=${meetsThreshold}, matchPercentage=${match?.matchPercentage}`);
+        }
         
         // Must be in matched set AND have valid match with sufficient percentage
-        return matchedJobIds.has(jobId) && 
-               match && 
-               match.matchPercentage > 0 &&
-               match.matchPercentage >= 40; // Stricter threshold
+        return inMatchedSet && hasMatch && meetsThreshold;
       });
+      
+      console.log(`After filtering: ${filtered.length} jobs remain`);
 
       // Always sort by match percentage (highest first) when resume is present
       filtered.sort((a, b) => {
