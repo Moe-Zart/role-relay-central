@@ -42,23 +42,41 @@ router.get('/jobs', async (req, res) => {
     
     if (search) {
       // Intelligent search: split by space to handle multiple terms
-      // Any term matching is enough (OR of ORs) - this allows broader results from expanded search queries
+      // First term is the core query, remaining are synonyms/expansions from intelligent matcher
+      // Make search more specific: prioritize matches in title/company over description
+      // This ensures jobs are relevant to the search term, not just tangentially mentioned
       const searchTerms = search.trim().split(/\s+/).filter(term => term.length > 0);
       
       if (searchTerms.length > 0) {
-        // For each search term, create OR conditions (title OR company OR description)
-        // Then combine all terms with OR (any term matching is enough)
-        const termConditions = searchTerms.map(() => {
-          return '(j.title LIKE ? OR j.company LIKE ? OR j.description_snippet LIKE ? OR j.description_full LIKE ?)';
+        // Require that at least one search term matches in title OR company
+        // This ensures the job is actually about the searched role, not just mentions it in description
+        const titleCompanyConditions = searchTerms.map(() => {
+          return '(j.title LIKE ? OR j.company LIKE ?)';
         });
         
-        conditions.push(`(${termConditions.join(' OR ')})`);
+        // Also allow description matches, but only as secondary (will be lower relevance)
+        const descriptionConditions = searchTerms.map(() => {
+          return '(j.description_snippet LIKE ? OR j.description_full LIKE ?)';
+        });
         
-        // Add parameters for each term (title, company, snippet, full description)
+        // Match if: any term in title/company OR (any term in description AND at least core term in title/company)
+        // This keeps results specific while still finding related roles via synonyms
+        const coreTerm = searchTerms[0];
+        conditions.push(`((${titleCompanyConditions.join(' OR ')}) OR ((${descriptionConditions.join(' OR ')}) AND (j.title LIKE ? OR j.company LIKE ?)))`);
+        
+        // Add parameters in order:
+        // 1. All terms for title/company matches
         searchTerms.forEach(term => {
-          const searchPattern = `%${term}%`;
-          params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+          const pattern = `%${term}%`;
+          params.push(pattern, pattern);
         });
+        // 2. All terms for description matches
+        searchTerms.forEach(term => {
+          const pattern = `%${term}%`;
+          params.push(pattern, pattern);
+        });
+        // 3. Core term again for the "at least one title/company" requirement
+        params.push(`%${coreTerm}%`, `%${coreTerm}%`);
       }
     }
     
