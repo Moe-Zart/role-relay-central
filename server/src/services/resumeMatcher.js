@@ -140,13 +140,8 @@ class ResumeMatcher {
         bonusMultiplier += 0.15; // Additional 15% for exceptional matches
       }
       
-      // Apply bonuses
-      baseScore = baseScore * bonusMultiplier;
-      
-      // Ensure base score doesn't exceed 1.0 before bonuses
-      baseScore = Math.min(1.0, baseScore);
-      
-      // Final score after bonuses (can exceed 1.0 temporarily, will be capped)
+      // Apply bonuses to base score
+      // Note: bonusMultiplier accumulates (e.g., 1.0 + 0.12 + 0.08 = 1.20 = 20% bonus)
       matchDetails.overallScore = baseScore * bonusMultiplier;
 
       // Scale to 0-100
