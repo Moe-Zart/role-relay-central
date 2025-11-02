@@ -280,23 +280,33 @@ const Results = () => {
           <div className="lg:col-span-3">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-foreground">
-                  {loading ? (
-                    <div className="flex flex-col space-y-2">
-                      <div className="flex items-center space-x-2">
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        <span>{filters.query ? 'AI is analyzing all jobs to find the best matches...' : 'Loading jobs...'}</span>
+                <div>
+                  <h2 className="text-xl font-semibold text-foreground">
+                    {loading ? (
+                      <div className="flex flex-col space-y-2">
+                        <div className="flex items-center space-x-2">
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                          <span>{filters.query ? 'AI is analyzing all jobs to find the best matches...' : 'Loading jobs...'}</span>
+                        </div>
+                        {filters.query && (
+                          <p className="text-sm text-muted-foreground ml-7">
+                            This may take a few moments while AI processes semantic similarity
+                          </p>
+                        )}
                       </div>
-                      {filters.query && (
-                        <p className="text-sm text-muted-foreground ml-7">
-                          This may take a few moments while AI processes semantic similarity
-                        </p>
-                      )}
+                    ) : (
+                      `${pagination.total} job${pagination.total !== 1 ? 's' : ''} found`
+                    )}
+                  </h2>
+                  {parsedResume && !loading && (
+                    <div className="flex items-center space-x-2 mt-1">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                      <span className="text-sm text-muted-foreground">
+                        Jobs are matched to your resume
+                      </span>
                     </div>
-                  ) : (
-                    `${pagination.total} job${pagination.total !== 1 ? 's' : ''} found`
                   )}
-                </h2>
+                </div>
               </div>
               
               {error ? (
