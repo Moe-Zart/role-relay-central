@@ -94,6 +94,10 @@ class JobApiService {
     return this.request<{ companies: Array<{ name: string; jobCount: number }> }>('/companies');
   }
 
+  async getCategories(): Promise<{ categories: Array<{ name: string; jobCount: number }> }> {
+    return this.request<{ categories: Array<{ name: string; jobCount: number }> }>('/categories');
+  }
+
   async getJobStats(): Promise<JobStats> {
     return this.request<JobStats>('/jobs/stats');
   }

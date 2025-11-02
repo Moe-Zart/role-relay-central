@@ -40,9 +40,25 @@ router.get('/jobs', async (req, res) => {
     const params = [];
     
     if (search) {
-      conditions.push('(j.title LIKE ? OR j.company LIKE ? OR j.description_snippet LIKE ?)');
-      const searchTerm = `%${search}%`;
-      params.push(searchTerm, searchTerm, searchTerm);
+      // Intelligent search: split by space to handle multiple terms
+      // Each term should match in title, company, or description
+      const searchTerms = search.trim().split(/\s+/).filter(term => term.length > 0);
+      
+      if (searchTerms.length > 0) {
+        // For each search term, create OR conditions
+        // All terms must match somewhere (AND of ORs)
+        const termConditions = searchTerms.map(() => {
+          return '(j.title LIKE ? OR j.company LIKE ? OR j.description_snippet LIKE ? OR j.description_full LIKE ?)';
+        });
+        
+        conditions.push(`(${termConditions.join(' AND ')})`);
+        
+        // Add parameters for each term (title, company, snippet, full description)
+        searchTerms.forEach(term => {
+          const searchPattern = `%${term}%`;
+          params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+        });
+      }
     }
     
     if (location) {
@@ -122,7 +138,33 @@ router.get('/jobs', async (req, res) => {
       query += ' WHERE ' + conditions.join(' AND ');
     }
     
-    query += ' GROUP BY j.id ORDER BY j.posted_at DESC';
+    // Order by: If search query exists, prioritize relevance (title matches > company matches > description matches)
+    // Otherwise, order by posted_at DESC (newest first)
+    // Note: Frontend will apply additional sorting (newest, company a-z, etc.) if user selects a sort option
+    let orderBy = 'j.posted_at DESC';
+    if (search) {
+      const searchTerms = search.trim().split(/\s+/).filter(term => term.length > 0);
+      if (searchTerms.length > 0) {
+        // Build relevance scoring: title matches score highest, then company, then description
+        // Each term adds to the score
+        const relevanceParts = [];
+        const relevanceParams = [];
+        
+        searchTerms.forEach((term, termIdx) => {
+          const weight = searchTerms.length - termIdx; // First term gets highest weight
+          relevanceParts.push(`CASE WHEN j.title LIKE ? THEN ${weight * 10} ELSE 0 END`);
+          relevanceParts.push(`CASE WHEN j.company LIKE ? THEN ${weight * 5} ELSE 0 END`);
+          relevanceParts.push(`CASE WHEN j.description_snippet LIKE ? THEN ${weight * 2} ELSE 0 END`);
+          relevanceParams.push(`%${term}%`, `%${term}%`, `%${term}%`);
+        });
+        
+        orderBy = `(${relevanceParts.join(' + ')}) DESC, j.posted_at DESC`;
+        // Add parameters for ORDER BY CASE statements
+        params.push(...relevanceParams);
+      }
+    }
+    
+    query += ` GROUP BY j.id ORDER BY ${orderBy}`;
     
     // Add pagination
     const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -298,6 +340,37 @@ router.get('/companies', async (req, res) => {
   } catch (error) {
     logger.error('Error fetching companies:', error);
     res.status(500).json({ error: 'Failed to fetch companies' });
+  }
+});
+
+// Get all categories for dropdown
+router.get('/categories', async (req, res) => {
+  try {
+    const db = getDatabase();
+    
+    const categories = await new Promise((resolve, reject) => {
+      db.all(`
+        SELECT DISTINCT category, COUNT(*) as job_count
+        FROM jobs
+        WHERE category IS NOT NULL AND category != ''
+        GROUP BY category
+        ORDER BY category ASC
+      `, [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+    
+    res.json({
+      categories: categories.map(c => ({
+        name: c.category,
+        jobCount: c.job_count
+      }))
+    });
+    
+  } catch (error) {
+    logger.error('Error fetching categories:', error);
+    res.status(500).json({ error: 'Failed to fetch categories' });
   }
 });
 

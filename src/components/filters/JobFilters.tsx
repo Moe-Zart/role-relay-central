@@ -19,7 +19,9 @@ interface JobFiltersProps {
 
 export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersProps) => {
   const [companies, setCompanies] = useState<Array<{ name: string; jobCount: number }>>([]);
+  const [categories, setCategories] = useState<Array<{ name: string; jobCount: number }>>([]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
+  const [loadingCategories, setLoadingCategories] = useState(false);
   
   const [expandedSections, setExpandedSections] = useState({
     workMode: true,
@@ -29,20 +31,26 @@ export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersPr
     company: true
   });
 
-  // Load companies on mount
+  // Load companies and categories on mount
   useEffect(() => {
-    const loadCompanies = async () => {
+    const loadData = async () => {
       setLoadingCompanies(true);
+      setLoadingCategories(true);
       try {
-        const response = await jobApiService.getCompanies();
-        setCompanies(response.companies);
+        const [companiesResponse, categoriesResponse] = await Promise.all([
+          jobApiService.getCompanies(),
+          jobApiService.getCategories()
+        ]);
+        setCompanies(companiesResponse.companies);
+        setCategories(categoriesResponse.categories);
       } catch (error) {
-        console.error('Failed to load companies:', error);
+        console.error('Failed to load filter data:', error);
       } finally {
         setLoadingCompanies(false);
+        setLoadingCategories(false);
       }
     };
-    loadCompanies();
+    loadData();
   }, []);
 
   const toggleSection = (section: keyof typeof expandedSections) => {
@@ -143,13 +151,28 @@ export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersPr
         </FilterSection>
 
         <FilterSection title="Job Category" section="category">
-          <Select value={filters.category} onValueChange={(value) => updateFilters({ category: value })}>
+          <Select value={filters.category || "all"} onValueChange={(value) => updateFilters({ category: value === "all" ? "" : value })}>
             <SelectTrigger>
-              <SelectValue placeholder="Select category" />
+              <SelectValue placeholder="All Categories">
+                {filters.category && filters.category !== "all" ? filters.category : "All Categories"}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
-              <SelectItem value="Software Engineering">Software Engineering</SelectItem>
+              {loadingCategories ? (
+                <SelectItem value="loading" disabled>
+                  <div className="flex items-center space-x-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Loading categories...</span>
+                  </div>
+                </SelectItem>
+              ) : (
+                categories.map((category) => (
+                  <SelectItem key={category.name} value={category.name}>
+                    {category.name} ({category.jobCount})
+                  </SelectItem>
+                ))
+              )}
             </SelectContent>
           </Select>
         </FilterSection>
