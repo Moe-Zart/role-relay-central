@@ -3,7 +3,7 @@ services:
     name: role-relay-backend
     env: node
     region: oregon
-    plan: starter
+    plan: free  # Free tier - will spin down after 15 min inactivity
     buildCommand: cd server && npm install
     startCommand: cd server && npm start
     envVars:

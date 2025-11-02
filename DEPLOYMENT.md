@@ -8,43 +8,48 @@ This guide will help you deploy the Role Relay Central application to production
 - **Backend**: Node.js + Express (deployed on Railway or Render)
 - **Database**: SQLite (file-based, persisted on backend server)
 
-## Option 1: Deploy with Railway (Recommended)
+## Option 1: Deploy with Render (FREE - Recommended)
 
-### Backend Deployment (Railway)
+### Backend Deployment (Render)
 
-1. **Sign up/Login to Railway**
-   - Go to https://railway.app
-   - Sign up with GitHub
+1. **Sign up/Login to Render**
+   - Go to https://render.com
+   - Sign up with GitHub (FREE, no credit card needed)
 
-2. **Create New Project**
-   - Click "New Project"
-   - Select "Deploy from GitHub repo"
-   - Select your `role-relay-central` repository
-   - Railway will detect the `server` folder
+2. **Create New Web Service**
+   - Click "New" → "Web Service"
+   - Connect your GitHub repository
 
-3. **Configure Backend Service**
-   - Railway should auto-detect Node.js
-   - **Root Directory**: Set to `server`
+3. **Configure Service**
+   - **Name**: `role-relay-backend`
+   - **Region**: Choose closest to you
+   - **Branch**: `main`
+   - **Root Directory**: `server`
+   - **Runtime**: Node
    - **Build Command**: `npm install`
    - **Start Command**: `npm start`
+   - **Instance Type**: Free (512 MB RAM)
 
 4. **Set Environment Variables**
-   - In Railway dashboard, go to Variables tab
    - Add:
      ```
-     PORT=3001
      NODE_ENV=production
+     PORT=10000
      FRONTEND_URL=https://your-frontend-url.vercel.app
      ```
 
-5. **Create Persistent Volume for Database**
-   - Click "New" → "Volume"
-   - Mount path: `/server/data`
-   - This will persist your SQLite database
+5. **Create Persistent Disk**
+   - Go to "Disks" tab
+   - Create disk named `server-data`
+   - Mount path: `/opt/render/project/src/server/data`
+   - Size: 1GB
 
-6. **Get Backend URL**
-   - Railway will provide a URL like: `https://your-app.railway.app`
-   - Copy this URL (you'll need it for frontend)
+6. **Deploy**
+   - Click "Create Web Service"
+   - Render will build and deploy
+   - Get your backend URL: `https://role-relay-backend.onrender.com`
+
+**Note**: Render free tier spins down after 15 min inactivity. First request takes ~30 seconds to wake up.
 
 ### Frontend Deployment (Vercel)
 
@@ -82,45 +87,16 @@ This guide will help you deploy the Role Relay Central application to production
    - Update `FRONTEND_URL` environment variable with your Vercel URL
    - Restart the backend service
 
-## Option 2: Deploy with Render
+## Option 2: Deploy with Railway (Paid - $5/month)
 
-### Backend Deployment (Render)
+### Backend Deployment (Railway)
 
-1. **Sign up/Login to Render**
-   - Go to https://render.com
-   - Sign up with GitHub
+**Note**: Railway requires a paid plan ($5/month with free credits) for web services. Free tier only allows databases.
 
-2. **Create New Web Service**
-   - Click "New" → "Web Service"
-   - Connect your GitHub repository
-
-3. **Configure Service**
-   - **Name**: `role-relay-backend`
-   - **Region**: Choose closest to you
-   - **Branch**: `main`
-   - **Root Directory**: `server`
-   - **Runtime**: Node
-   - **Build Command**: `npm install`
-   - **Start Command**: `npm start`
-
-4. **Set Environment Variables**
-   - Add:
-     ```
-     NODE_ENV=production
-     PORT=10000
-     FRONTEND_URL=https://your-frontend-url.vercel.app
-     ```
-
-5. **Create Persistent Disk**
-   - Go to "Disks" tab
-   - Create disk named `server-data`
-   - Mount path: `/opt/render/project/src/server/data`
-   - Size: 1GB
-
-6. **Deploy**
-   - Click "Create Web Service"
-   - Render will build and deploy
-   - Get your backend URL: `https://role-relay-backend.onrender.com`
+If you want to use Railway:
+1. **Upgrade Railway plan** ($5/month)
+2. Follow the same steps as Render but use Railway interface
+3. Railway provides always-on hosting (no spin-down)
 
 ### Frontend Deployment (Vercel)
 
