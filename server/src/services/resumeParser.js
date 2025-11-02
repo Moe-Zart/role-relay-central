@@ -104,7 +104,7 @@ class ResumeParser {
 
     // Also look for common technology patterns
     const techKeywords = [
-      'javascript', 'typescript', 'python', 'java', 'c#', 'c++', 'go', 'rust', 'php', 'ruby',
+      'javascript', 'typescript', 'python', 'java', 'c#', 'c\\+\\+', 'go', 'rust', 'php', 'ruby',
       'react', 'vue', 'angular', 'node', 'express', 'next', 'nuxt', 'svelte',
       'html', 'css', 'sass', 'less', 'styled-components', 'tailwind',
       'mongodb', 'postgresql', 'mysql', 'redis', 'elasticsearch', 'dynamodb',
@@ -114,9 +114,17 @@ class ResumeParser {
     ];
 
     techKeywords.forEach(tech => {
-      const regex = new RegExp(`\\b${tech}\\b`, 'gi');
-      if (regex.test(text)) {
-        skills.add(tech.toLowerCase());
+      try {
+        // Escape special regex characters and handle tech name normalization
+        const normalizedTech = tech.replace(/\\/g, ''); // Remove escape chars for display
+        const regex = new RegExp(`\\b${tech}\\b`, 'gi');
+        if (regex.test(text)) {
+          // Normalize the name for storage (e.g., "c++" becomes "c++" without escapes)
+          skills.add(normalizedTech.toLowerCase());
+        }
+      } catch (regexError) {
+        // Skip invalid regex patterns
+        logger.warn(`Invalid regex pattern for tech: ${tech}`, regexError);
       }
     });
 
@@ -139,14 +147,25 @@ class ResumeParser {
       /\b(aws|azure|gcp|digitalocean|heroku|vercel|netlify)\b/gi,
       // Tools
       /\b(docker|kubernetes|terraform|ansible|jenkins|github actions|gitlab ci)\b/gi,
-      // Languages
-      /\b(javascript|typescript|python|java|c#|c\+\+|go|rust|php|ruby|swift|kotlin)\b/gi
+      // Languages (note: c++ needs special handling)
+      /\b(javascript|typescript|python|java|c#|go|rust|php|ruby|swift|kotlin)\b/gi,
+      // Special handling for c++ (has + which needs escaping)
+      /\bc\+\+/gi
     ];
 
     techPatterns.forEach(pattern => {
-      const matches = text.match(pattern);
-      if (matches) {
-        matches.forEach(match => technologies.add(match.toLowerCase()));
+      try {
+        const matches = text.match(pattern);
+        if (matches) {
+          matches.forEach(match => {
+            // Normalize c++ variations
+            const normalized = match.toLowerCase().replace(/c\+\+/gi, 'c++');
+            technologies.add(normalized);
+          });
+        }
+      } catch (error) {
+        // Skip invalid patterns
+        logger.warn('Error matching tech pattern:', error);
       }
     });
 
