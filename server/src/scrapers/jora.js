@@ -491,50 +491,58 @@ export class JoraScraper {
         const description = descEl.text().trim() || '';
 
         // Extract posted date - Jora format: "10d ago, from Prosple" or "18h ago, from eFinancialCareers"
-        // Strategy: Get ALL text from the job card and extract the date pattern
+        // CRITICAL: Must extract EXACT value from Jora, not calculate manually
         let postedAt = null;
         let postedText = null;
         
-        // First, try to find a specific date element
+        // Get the FULL HTML content of the job card to debug
+        const jobCardHtml = $el.html();
+        const jobCardText = $el.text();
+        
+        // Strategy 1: Try to find a specific date element with common selectors
         let postedEl = $el.find('[data-automation="job-date"]').first();
         if (!postedEl.length) postedEl = $el.find('time').first();
-        if (!postedEl.length) postedEl = $el.find('[class*="date"], [class*="ago"]').first();
+        if (!postedEl.length) postedEl = $el.find('[class*="date"]').first();
+        if (!postedEl.length) postedEl = $el.find('[class*="ago"]').first();
+        if (!postedEl.length) postedEl = $el.find('[class*="posted"]').first();
+        if (!postedEl.length) postedEl = $el.find('[class*="listed"]').first();
         
-        // Try to get date from datetime attribute first (most reliable)
-        const datetimeAttr = postedEl.attr('datetime') || postedEl.attr('data-date') || postedEl.attr('title');
+        // Strategy 2: Try to get date from datetime attribute (most reliable)
+        const datetimeAttr = postedEl.attr('datetime') || postedEl.attr('data-date') || postedEl.attr('title') || postedEl.attr('aria-label');
         
-        if (datetimeAttr) {
+        if (datetimeAttr && !datetimeAttr.match(/^\d{4}-\d{2}-\d{2}/)) {
+          // If it's not an ISO date, treat it as text
+          postedText = datetimeAttr.trim();
+        } else if (datetimeAttr) {
           // Parse ISO date string if available
           postedAt = new Date(datetimeAttr).toISOString();
-          logger.debug(`Jora: Found datetime attribute: ${datetimeAttr} for job: ${title}`);
+          logger.info(`Jora: Found ISO datetime attribute: ${datetimeAttr} for job: "${title}"`);
         } else {
-          // Extract posted date text from element or entire job card
+          // Strategy 3: Extract posted date text from element
           if (postedEl.length) {
             postedText = postedEl.text().trim();
           }
           
-          // If no element found or no text, search entire job card for date pattern
+          // Strategy 4: If no element found or no valid date pattern, search entire job card
           if (!postedText || !postedText.match(/\d+[hd]\s*ago|\d+\s*(?:hours?|days?|weeks?|months?)\s*ago/i)) {
-            const fullJobCardText = $el.text();
-            
             // Extract date pattern from entire job card text
             // Patterns: "10d ago", "18h ago", "3 days ago", "2 weeks ago", etc.
             const datePatterns = [
-              /\d+[hd]\s*ago/i,  // "10d ago" or "18h ago"
+              /\d+[hd]\s*ago/i,  // "10d ago" or "18h ago" - CHECK THIS FIRST
+              /\d+\s*days?\s*ago/i,    // "10 days ago" 
               /\d+\s*hours?\s*ago/i,  // "18 hours ago"
-              /\d+\s*days?\s*ago/i,    // "10 days ago"
               /\d+\s*weeks?\s*ago/i,   // "2 weeks ago"
               /\d+\s*months?\s*ago/i   // "3 months ago"
             ];
             
             for (const pattern of datePatterns) {
-              const match = fullJobCardText.match(pattern);
+              const match = jobCardText.match(pattern);
               if (match) {
                 // Extract the matched text and clean it
                 postedText = match[0].trim();
                 // Remove anything after comma if present (like ", from Prosple")
-                if (fullJobCardText.includes(',')) {
-                  const beforeComma = fullJobCardText.substring(0, fullJobCardText.indexOf(','));
+                if (jobCardText.includes(',')) {
+                  const beforeComma = jobCardText.substring(0, jobCardText.indexOf(','));
                   const matchInBeforeComma = beforeComma.match(pattern);
                   if (matchInBeforeComma) {
                     postedText = matchInBeforeComma[0].trim();
@@ -544,7 +552,7 @@ export class JoraScraper {
               }
             }
             
-            // If still no match, try finding element with "ago" text
+            // Strategy 5: If still no match, search ALL child elements for "ago" text
             if (!postedText) {
               $el.find('*').each((_, elem) => {
                 const $elem = $(elem);
@@ -555,6 +563,8 @@ export class JoraScraper {
                   if (postedText.includes(',')) {
                     postedText = postedText.split(',')[0].trim();
                   }
+                  // Remove "from X" suffix
+                  postedText = postedText.replace(/\s+from\s+.*$/i, '').trim();
                   return false; // break
                 }
               });
@@ -568,11 +578,18 @@ export class JoraScraper {
           }
           
           if (postedText) {
-            logger.info(`Jora: Extracted posted date text: "${postedText}" for job: "${title}" at ${company}`);
+            logger.info(`Jora: ✅ Extracted posted date text from Jora: "${postedText}" for job: "${title}" at ${company}`);
             postedAt = this.parsePostedDate(postedText);
             if (postedAt) {
-              logger.debug(`Jora: Parsed to ISO date: ${postedAt}`);
+              const parsedDate = new Date(postedAt);
+              const daysDiff = Math.floor((Date.now() - parsedDate.getTime()) / (1000 * 60 * 60 * 24));
+              const hoursDiff = Math.floor((Date.now() - parsedDate.getTime()) / (1000 * 60 * 60));
+              logger.info(`Jora: ✅ Parsed "${postedText}" -> ISO: ${postedAt} (${daysDiff} days, ${hoursDiff} hours ago)`);
+            } else {
+              logger.warn(`Jora: ⚠️ Failed to parse date text: "${postedText}"`);
             }
+          } else {
+            logger.warn(`Jora: ⚠️ No date text extracted for job: "${title}" at ${company}. Full card text sample: "${$el.text().substring(0, 200)}..."`);
           }
         }
 
