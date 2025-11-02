@@ -119,14 +119,27 @@ class SemanticMatcher {
       const similarity = this.cosineSimilarity(queryEmbedding, jobEmbedding);
       
       // Normalize to 0-1 range (cosine similarity is already -1 to 1, but we normalize to 0-1)
-      const normalizedScore = (similarity + 1) / 2;
+      let normalizedScore = (similarity + 1) / 2;
       
-      // Boost score if query appears directly in title (exact match boost)
+      // Boost score if query keywords appear directly in title (exact match boost)
       const queryLower = query.toLowerCase();
       const titleLower = jobTitle.toLowerCase();
-      if (titleLower.includes(queryLower) || queryLower.includes(titleLower.split(' ')[0])) {
-        // Exact keyword match in title gets a boost
-        return Math.min(1.0, normalizedScore + 0.2);
+      const queryWords = queryLower.split(/\s+/).filter(w => w.length > 3); // Only significant words
+      
+      let exactMatchBoost = 0;
+      queryWords.forEach(word => {
+        if (titleLower.includes(word)) {
+          exactMatchBoost += 0.15; // Boost for each matching keyword
+        }
+      });
+      
+      // Apply boost but cap at reasonable level
+      normalizedScore = Math.min(1.0, normalizedScore + exactMatchBoost);
+      
+      // More conservative scoring - penalize very low similarities more
+      if (normalizedScore < 0.4) {
+        // Heavily penalize low similarities
+        normalizedScore = normalizedScore * 0.5;
       }
       
       return normalizedScore;

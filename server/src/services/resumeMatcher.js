@@ -61,42 +61,59 @@ class ResumeMatcher {
       const skillMatchRatio = matchDetails.skillsMatched.length / Math.max(resumeData.skills.length, 1);
       const techMatchRatio = matchDetails.technologiesMatched.length / Math.max(resumeData.technologies.length, 1);
       
-      // 5. Strict matching: require at least some match (skills OR technologies OR high semantic)
-      // If NO skills match AND NO techs match AND semantic score is low, filter out (0% match)
-      const hasAnyMatch = matchDetails.skillsMatched.length > 0 || 
-                         matchDetails.technologiesMatched.length > 0 || 
-                         semanticScore > 0.5;
+      // 5. STRICT MATCHING: Require MULTIPLE indicators of match
+      // Must have at least 2 out of 3: skills match, technologies match, OR high semantic (>0.65)
+      // Single indicator alone is not enough
+      const hasSkillsMatch = matchDetails.skillsMatched.length > 0;
+      const hasTechMatch = matchDetails.technologiesMatched.length > 0;
+      const hasHighSemantic = semanticScore > 0.65; // Higher threshold for semantic
       
-      if (!hasAnyMatch) {
-        // No meaningful match - return 0%
+      const matchIndicators = (hasSkillsMatch ? 1 : 0) + (hasTechMatch ? 1 : 0) + (hasHighSemantic ? 1 : 0);
+      
+      // Require at least 2 indicators OR very high semantic (>0.75) alone
+      if (matchIndicators < 2 && semanticScore <= 0.75) {
+        // Not enough match indicators - return 0%
         matchDetails.overallScore = 0;
         matchDetails.matchPercentage = 0;
         return matchDetails;
       }
 
-      // 6. Calculate overall match score with improved weighting
-      // Higher weight for skills and technologies (more concrete matches)
-      // Semantic similarity is important but secondary
-      const semanticWeight = 0.3;
-      const skillWeight = 0.4;  // Increased from 0.3
-      const techWeight = 0.3;   // Increased from 0.2
+      // 6. Calculate overall match score with STRICTER weighting
+      // Require meaningful matches - boost scores for jobs with multiple match types
+      const semanticWeight = 0.25; // Reduced - semantic is less reliable alone
+      const skillWeight = 0.45;     // Increased - skills are most important
+      const techWeight = 0.30;      // Increased - technologies are very important
 
-      // Use squared ratios to emphasize strong matches
-      // This means 100% skill match contributes more than 50% skill match
+      // Apply exponential scaling to emphasize STRONG matches
+      // Jobs with 100% skill match get MUCH higher score than 50% match
+      const skillScore = Math.pow(skillMatchRatio, 1.5) * skillWeight;
+      const techScore = Math.pow(techMatchRatio, 1.5) * techWeight;
+      
+      // Semantic score only contributes if it's reasonably high
+      const effectiveSemanticScore = semanticScore > 0.6 ? semanticScore : semanticScore * 0.5;
+      const semanticContribution = effectiveSemanticScore * semanticWeight;
+      
+      // Bonus multiplier if job has BOTH skills AND technologies matched
+      const multiMatchBonus = (hasSkillsMatch && hasTechMatch) ? 1.15 : 1.0;
+      
       matchDetails.overallScore = (
-        semanticScore * semanticWeight +
-        Math.pow(skillMatchRatio, 1.2) * skillWeight +
-        Math.pow(techMatchRatio, 1.2) * techWeight
+        (semanticContribution + skillScore + techScore) * multiMatchBonus
       );
 
-      // Scale to 0-100, but ensure minimum threshold
+      // Scale to 0-100
       matchDetails.matchPercentage = Math.round(matchDetails.overallScore * 100);
       
-      // Only return matches with at least 20% relevance (stricter threshold)
-      if (matchDetails.matchPercentage < 20) {
+      // STRICT THRESHOLD: Only show jobs with at least 40% match
+      // This ensures only genuinely relevant jobs appear
+      if (matchDetails.matchPercentage < 40) {
         matchDetails.matchPercentage = 0;
         matchDetails.overallScore = 0;
         return matchDetails;
+      }
+      
+      // Cap at 100%
+      if (matchDetails.matchPercentage > 100) {
+        matchDetails.matchPercentage = 100;
       }
 
       // 6. Generate match reasons

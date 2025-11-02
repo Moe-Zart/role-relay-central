@@ -169,6 +169,17 @@ const Results = () => {
     }
   };
 
+  // When resume matching completes, fetch ALL matched jobs from the backend
+  useEffect(() => {
+    if (parsedResume && matchedJobIds.size > 0 && !isMatchingJobs && jobBundles.length === 0) {
+      // Matching is complete, but we need to fetch the matched jobs
+      // The backend has the matches, but we need to get the job data
+      // For now, we'll fetch jobs normally and filter client-side
+      // But ideally, we should have an endpoint that returns matched jobs only
+      fetchJobs(1);
+    }
+  }, [matchedJobIds.size, parsedResume, isMatchingJobs]);
+
   // Load next page
   const loadNextPage = () => {
     if (pagination.page < pagination.totalPages && !loadingMore) {
@@ -176,10 +187,13 @@ const Results = () => {
     }
   };
 
-  // Fetch jobs when filters change
+  // Fetch jobs when filters change (only if not matching or if matching is complete)
   useEffect(() => {
-    fetchJobs(1);
-  }, [filters]);
+    // Don't fetch if we're currently matching - wait for matching to complete
+    if (!isMatchingJobs) {
+      fetchJobs(1);
+    }
+  }, [filters, isMatchingJobs]);
 
   // Update URL when filters change
   useEffect(() => {
@@ -197,12 +211,21 @@ const Results = () => {
   const filteredJobs = useMemo(() => {
     let filtered = [...jobBundles];
 
-    // If resume is present, filter to only show matched jobs and sort by match percentage
-    if (parsedResume && matchedJobIds.size > 0) {
-      // Filter: only show jobs that have matches (match percentage > 0)
+    // If resume is present and matching is complete, STRICTLY filter to only show matched jobs
+    if (parsedResume && matchedJobIds.size > 0 && !isMatchingJobs) {
+      // STRICT FILTER: Only show jobs that:
+      // 1. Are in the matchedJobIds set (matched by backend)
+      // 2. Have a match record with percentage > 0
+      // 3. Have match percentage >= 40% (stricter threshold)
       filtered = filtered.filter(bundle => {
-        const match = getMatchForJob(bundle.canonicalJob.id);
-        return match && match.matchPercentage > 0;
+        const jobId = bundle.canonicalJob.id;
+        const match = getMatchForJob(jobId);
+        
+        // Must be in matched set AND have valid match with sufficient percentage
+        return matchedJobIds.has(jobId) && 
+               match && 
+               match.matchPercentage > 0 &&
+               match.matchPercentage >= 40; // Stricter threshold
       });
 
       // Always sort by match percentage (highest first) when resume is present
@@ -220,12 +243,15 @@ const Results = () => {
           return new Date(b.canonicalJob.postedAt).getTime() - new Date(a.canonicalJob.postedAt).getTime();
         }
         
-        // Fallback: if one has match and other doesn't, prioritize the one with match
+        // If one has match and other doesn't, prioritize the one with match
         if (matchA && !matchB) return -1;
         if (!matchA && matchB) return 1;
         
         return new Date(b.canonicalJob.postedAt).getTime() - new Date(a.canonicalJob.postedAt).getTime();
       });
+    } else if (parsedResume && isMatchingJobs) {
+      // While matching is in progress, show NO jobs (empty state)
+      filtered = [];
     } else {
       // Apply standard sorting when no resume
       filtered.sort((a, b) => {
@@ -243,7 +269,7 @@ const Results = () => {
     }
 
     return filtered;
-  }, [jobBundles, sortBy, parsedResume, getMatchForJob, matchedJobIds.size]);
+  }, [jobBundles, sortBy, parsedResume, getMatchForJob, matchedJobIds, isMatchingJobs]);
 
   const handleSearch = (newFilters: SearchFilters) => {
     setFilters(newFilters);

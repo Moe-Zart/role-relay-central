@@ -231,31 +231,35 @@ router.post('/match-all-jobs', async (req, res) => {
     logger.info(`Found ${processedJobs.length} total jobs to match against`);
 
     // Match resume to all jobs with progress tracking
-    const batchSize = 20; // Process 20 jobs at a time
+    // Process in smaller batches for better control and to ensure all jobs are processed
+    const batchSize = 10; // Smaller batches for more accurate processing
     const allMatches = [];
+    
+    logger.info(`Starting strict matching process on ${processedJobs.length} jobs (minimum 40% match required)...`);
     
     for (let i = 0; i < processedJobs.length; i += batchSize) {
       const batch = processedJobs.slice(i, i + batchSize);
-      const batchMatches = await Promise.all(
-        batch.map(async (job) => {
+      
+      // Process batch sequentially to ensure each job is properly analyzed
+      for (const job of batch) {
+        try {
           const matchDetails = await resumeMatcher.matchJobToResume(parsedResume, job);
-          return {
-            jobId: job.id,
-            matchDetails
-          };
-        })
-      );
-      
-      // Only include jobs with match percentage > 0 (filter out non-matches)
-      batchMatches.forEach(({ jobId, matchDetails }) => {
-        if (matchDetails.matchPercentage > 0) {
-          allMatches.push({ jobId, matchDetails });
+          
+          // Only include jobs with match percentage >= 40% (strict threshold)
+          if (matchDetails.matchPercentage >= 40) {
+            allMatches.push({ jobId: job.id, matchDetails });
+          }
+        } catch (error) {
+          logger.error(`Error matching job ${job.id}:`, error);
+          // Continue with next job if one fails
         }
-      });
+      }
       
-      // Send progress update (optional - can be used for progress bar)
-      if ((i + batchSize) % 100 === 0 || (i + batchSize) >= processedJobs.length) {
-        logger.info(`Progress: ${Math.min(i + batchSize, processedJobs.length)}/${processedJobs.length} jobs processed, ${allMatches.length} matches found`);
+      // Log progress every 50 jobs
+      if ((i + batchSize) % 50 === 0 || (i + batchSize) >= processedJobs.length) {
+        const processed = Math.min(i + batchSize, processedJobs.length);
+        const progressPercent = ((processed / processedJobs.length) * 100).toFixed(1);
+        logger.info(`Progress: ${processed}/${processedJobs.length} jobs (${progressPercent}%) - ${allMatches.length} matches found so far (>=40% match)`);
       }
     }
 
