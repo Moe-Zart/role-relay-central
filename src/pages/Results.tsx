@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
-import { SlidersHorizontal, ArrowUpDown, Menu, X, Loader2, Clock } from "lucide-react";
+import { SlidersHorizontal, ArrowUpDown, Menu, X, Loader2, Clock, Sparkles } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { SearchForm } from "@/components/search/SearchForm";
 import { JobFilters } from "@/components/filters/JobFilters";
@@ -14,6 +14,7 @@ import { SearchFilters, JobBundle } from "@/types/jobs";
 import { jobApiService } from "@/services/jobApi";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
+import { useResume } from "@/contexts/ResumeContext";
 
 const Results = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -32,6 +33,8 @@ const Results = () => {
     totalPages: 0
   });
   const { toast } = useToast();
+  const { parsedResume, getMatchForJob } = useResume();
+  const resumeMatchParam = searchParams.get('resumeMatch');
 
   const formatTimeAgo = (dateString: string) => {
     try {
@@ -141,22 +144,40 @@ const Results = () => {
   const filteredJobs = useMemo(() => {
     let filtered = [...jobBundles];
 
-    // Apply sorting
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case "newest":
-          return new Date(b.canonicalJob.postedAt).getTime() - new Date(a.canonicalJob.postedAt).getTime();
-        case "company-a-z":
-          return a.canonicalJob.company.localeCompare(b.canonicalJob.company);
-        case "company-z-a":
-          return b.canonicalJob.company.localeCompare(a.canonicalJob.company);
-        default:
-          return new Date(b.canonicalJob.postedAt).getTime() - new Date(a.canonicalJob.postedAt).getTime(); // Default to newest
-      }
-    });
+    // If resume is present, prioritize by match score first
+    if (parsedResume && sortBy === "newest") {
+      filtered.sort((a, b) => {
+        const matchA = getMatchForJob(a.canonicalJob.id);
+        const matchB = getMatchForJob(b.canonicalJob.id);
+        
+        // Sort by match percentage (highest first) if both have matches
+        if (matchA && matchB) {
+          const scoreDiff = matchB.matchPercentage - matchA.matchPercentage;
+          if (Math.abs(scoreDiff) > 5) { // Only reorder if significant difference
+            return scoreDiff;
+          }
+        }
+        // Fall back to date if no significant match difference
+        return new Date(b.canonicalJob.postedAt).getTime() - new Date(a.canonicalJob.postedAt).getTime();
+      });
+    } else {
+      // Apply standard sorting
+      filtered.sort((a, b) => {
+        switch (sortBy) {
+          case "newest":
+            return new Date(b.canonicalJob.postedAt).getTime() - new Date(a.canonicalJob.postedAt).getTime();
+          case "company-a-z":
+            return a.canonicalJob.company.localeCompare(b.canonicalJob.company);
+          case "company-z-a":
+            return b.canonicalJob.company.localeCompare(a.canonicalJob.company);
+          default:
+            return new Date(b.canonicalJob.postedAt).getTime() - new Date(a.canonicalJob.postedAt).getTime();
+        }
+      });
+    }
 
     return filtered;
-  }, [jobBundles, sortBy]);
+  }, [jobBundles, sortBy, parsedResume, getMatchForJob]);
 
   const handleSearch = (newFilters: SearchFilters) => {
     setFilters(newFilters);
