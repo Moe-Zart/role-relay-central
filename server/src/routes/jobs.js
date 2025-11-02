@@ -18,7 +18,8 @@ router.get('/jobs', async (req, res) => {
       experience,
       salaryMin,
       salaryMax,
-      sources
+      company,
+      postedWithin
     } = req.query;
     
     let query = `
@@ -55,13 +56,56 @@ router.get('/jobs', async (req, res) => {
     }
     
     if (workMode) {
-      conditions.push('j.work_mode = ?');
-      params.push(workMode);
+      // Handle comma-separated array or single value
+      const workModes = typeof workMode === 'string' ? workMode.split(',').filter(Boolean) : [workMode];
+      if (workModes.length > 0) {
+        const placeholders = workModes.map(() => '?').join(',');
+        conditions.push(`j.work_mode IN (${placeholders})`);
+        params.push(...workModes);
+      }
     }
     
     if (experience) {
-      conditions.push('j.experience = ?');
-      params.push(experience);
+      // Handle comma-separated array or single value
+      const experiences = typeof experience === 'string' ? experience.split(',').filter(Boolean) : [experience];
+      if (experiences.length > 0) {
+        const placeholders = experiences.map(() => '?').join(',');
+        conditions.push(`j.experience IN (${placeholders})`);
+        params.push(...experiences);
+      }
+    }
+    
+    if (company) {
+      conditions.push('j.company LIKE ?');
+      params.push(`%${company}%`);
+    }
+    
+    if (postedWithin) {
+      const now = new Date();
+      let daysAgo = 0;
+      
+      switch (postedWithin) {
+        case '24h':
+          daysAgo = 1;
+          break;
+        case '3d':
+          daysAgo = 3;
+          break;
+        case '7d':
+          daysAgo = 7;
+          break;
+        case '14d':
+          daysAgo = 14;
+          break;
+        default:
+          daysAgo = 0;
+      }
+      
+      if (daysAgo > 0) {
+        const cutoffDate = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+        conditions.push('j.posted_at >= ?');
+        params.push(cutoffDate.toISOString());
+      }
     }
     
     if (salaryMin) {
@@ -224,6 +268,36 @@ router.get('/jobs/stats', async (req, res) => {
   } catch (error) {
     logger.error('Error fetching job stats:', error);
     res.status(500).json({ error: 'Failed to fetch job statistics' });
+  }
+});
+
+// Get all companies for dropdown
+router.get('/companies', async (req, res) => {
+  try {
+    const db = getDatabase();
+    
+    const companies = await new Promise((resolve, reject) => {
+      db.all(`
+        SELECT DISTINCT company, COUNT(*) as job_count
+        FROM jobs
+        GROUP BY company
+        ORDER BY company ASC
+      `, [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+    
+    res.json({
+      companies: companies.map(c => ({
+        name: c.company,
+        jobCount: c.job_count
+      }))
+    });
+    
+  } catch (error) {
+    logger.error('Error fetching companies:', error);
+    res.status(500).json({ error: 'Failed to fetch companies' });
   }
 });
 

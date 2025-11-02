@@ -77,8 +77,8 @@ class JobApiService {
     if (filters.experience?.length) params.set('experience', filters.experience.join(','));
     if (filters.salaryMin) params.set('salaryMin', filters.salaryMin.toString());
     if (filters.salaryMax) params.set('salaryMax', filters.salaryMax.toString());
-    if (filters.sources?.length) params.set('sources', filters.sources.join(','));
     if (filters.company) params.set('company', filters.company);
+    if (filters.postedWithin) params.set('postedWithin', filters.postedWithin);
     
     params.set('page', page.toString());
     params.set('limit', limit.toString());
@@ -88,6 +88,10 @@ class JobApiService {
 
   async getJobById(id: string): Promise<ApiJob> {
     return this.request<ApiJob>(`/jobs/${id}`);
+  }
+
+  async getCompanies(): Promise<{ companies: Array<{ name: string; jobCount: number }> }> {
+    return this.request<{ companies: Array<{ name: string; jobCount: number }> }>('/companies');
   }
 
   async getJobStats(): Promise<JobStats> {

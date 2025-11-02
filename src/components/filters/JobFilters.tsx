@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Filter, ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Filter, ChevronDown, ChevronUp, RotateCcw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +9,7 @@ import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { SearchFilters } from "@/types/jobs";
+import { jobApiService } from "@/services/jobApi";
 
 interface JobFiltersProps {
   filters: SearchFilters;
@@ -17,16 +18,33 @@ interface JobFiltersProps {
 }
 
 export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersProps) => {
+  const [companies, setCompanies] = useState<Array<{ name: string; jobCount: number }>>([]);
+  const [loadingCompanies, setLoadingCompanies] = useState(false);
+  
   const [expandedSections, setExpandedSections] = useState({
-    distance: true,
     workMode: true,
-    sources: true,
     category: true,
     experience: true,
     salary: true,
     posted: true,
     company: true
   });
+
+  // Load companies on mount
+  useEffect(() => {
+    const loadCompanies = async () => {
+      setLoadingCompanies(true);
+      try {
+        const response = await jobApiService.getCompanies();
+        setCompanies(response.companies);
+      } catch (error) {
+        console.error('Failed to load companies:', error);
+      } finally {
+        setLoadingCompanies(false);
+      }
+    };
+    loadCompanies();
+  }, []);
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
@@ -47,7 +65,6 @@ export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersPr
       workMode: [],
       category: "all",
       distance: 50,
-      sources: [],
       experience: [],
       salaryMin: undefined,
       salaryMax: undefined,
@@ -61,13 +78,6 @@ export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersPr
       ? [...filters.workMode, mode]
       : filters.workMode.filter(m => m !== mode);
     updateFilters({ workMode: newWorkMode });
-  };
-
-  const handleSourceChange = (source: string, checked: boolean) => {
-    const newSources = checked 
-      ? [...filters.sources, source]
-      : filters.sources.filter(s => s !== source);
-    updateFilters({ sources: newSources });
   };
 
   const handleExperienceChange = (level: string, checked: boolean) => {
@@ -120,33 +130,6 @@ export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersPr
         </div>
       </CardHeader>
       <CardContent className="p-0 space-y-0 divide-y divide-border">
-        <FilterSection title="Distance from you" section="distance">
-          <div className="space-y-3">
-            <div>
-              <Label htmlFor="postcode">Your postcode</Label>
-              <Input 
-                id="postcode"
-                placeholder="e.g. 2000"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label>Radius: {filters.distance}km</Label>
-              <Slider
-                value={[filters.distance]}
-                onValueChange={([value]) => updateFilters({ distance: value })}
-                max={100}
-                step={5}
-                className="mt-2"
-              />
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox id="anywhere" />
-              <Label htmlFor="anywhere">Anywhere</Label>
-            </div>
-          </div>
-        </FilterSection>
-
         <FilterSection title="Work Mode" section="workMode">
           <div className="space-y-2">
             {["Remote", "On-site", "Hybrid"].map((mode) => (
@@ -161,8 +144,6 @@ export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersPr
             ))}
           </div>
         </FilterSection>
-
-        {null}
 
         <FilterSection title="Job Category" section="category">
           <Select value={filters.category} onValueChange={(value) => updateFilters({ category: value })}>
@@ -238,11 +219,33 @@ export const JobFilters = ({ filters, onFiltersChange, className }: JobFiltersPr
         </FilterSection>
 
         <FilterSection title="Company" section="company">
-          <Input 
-            placeholder="Company name"
-            value={filters.company}
-            onChange={(e) => updateFilters({ company: e.target.value })}
-          />
+          <Select 
+            value={filters.company || "all"} 
+            onValueChange={(value) => updateFilters({ company: value === "all" ? "" : value })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="All companies">
+                {filters.company ? filters.company : "All companies"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All companies</SelectItem>
+              {loadingCompanies ? (
+                <SelectItem value="loading" disabled>
+                  <div className="flex items-center space-x-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Loading companies...</span>
+                  </div>
+                </SelectItem>
+              ) : (
+                companies.map((company) => (
+                  <SelectItem key={company.name} value={company.name}>
+                    {company.name} ({company.jobCount})
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
         </FilterSection>
       </CardContent>
     </Card>
