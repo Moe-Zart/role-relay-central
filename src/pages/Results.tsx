@@ -47,15 +47,17 @@ const Results = () => {
   useEffect(() => {
     if (parsedResume && !isMatchingJobs && matchedJobIds.size === 0) {
       setIsMatchingJobs(true);
-      setMatchingProgress({ current: 0, total: 100, matched: 0 }); // Show indeterminate progress
+      setMatchingProgress({ current: 0, total: 1, matched: 0 }); // Initialize with total=1 to show indeterminate
       // Clear existing jobs while matching - this ensures no jobs show until matching completes
       setJobBundles([]);
       
-      console.log('Starting comprehensive resume matching for ALL jobs in database...');
+      console.log('🤖 Starting comprehensive resume matching for ALL jobs in database...');
+      console.log('⏳ AI is analyzing each job individually - this may take a moment...');
       
       resumeService.matchAllJobs(parsedResume)
         .then(async (result) => {
           console.log(`✅ Resume matching completed: ${result.matchedJobs} matches (>=40%) out of ${result.totalJobs} total jobs`);
+          console.log(`📊 Matching stats: ${((result.matchedJobs / result.totalJobs) * 100).toFixed(1)}% match rate`);
           
           // Store all matches
           const matchesMap = new Map<string, any>();
@@ -240,15 +242,16 @@ const Results = () => {
   };
 
   // Fetch jobs when filters change (only if not matching or if matching is complete)
-  // BUT: Don't fetch if resume is present - matched jobs are already loaded
+  // BUT: Don't fetch if resume is present and we have matched jobs - matched jobs are already loaded
   useEffect(() => {
     // Don't fetch if:
     // 1. Currently matching (wait for matching to complete)
-    // 2. Resume is present (matched jobs are already loaded by the matching effect)
-    if (!isMatchingJobs && !parsedResume) {
+    // 2. Resume is present AND we have matched job IDs (matched jobs are already loaded separately)
+    //    If resume is present but no matches yet, we might still need to fetch (shouldn't happen, but safe)
+    if (!isMatchingJobs && (!parsedResume || matchedJobIds.size === 0)) {
       fetchJobs(1);
     }
-  }, [filters, isMatchingJobs, parsedResume]);
+  }, [filters, isMatchingJobs, parsedResume, matchedJobIds.size]);
 
   // Update URL when filters change
   useEffect(() => {

@@ -232,10 +232,13 @@ router.post('/match-all-jobs', async (req, res) => {
 
     // Match resume to all jobs with progress tracking
     // Process in smaller batches for better control and to ensure all jobs are processed
-    const batchSize = 10; // Smaller batches for more accurate processing
+    const batchSize = 5; // Smaller batches for more accurate processing and better progress updates
     const allMatches = [];
     
     logger.info(`Starting strict matching process on ${processedJobs.length} jobs (minimum 40% match required)...`);
+    logger.info(`Processing jobs in batches of ${batchSize} to ensure thorough analysis...`);
+    
+    const startTime = Date.now();
     
     for (let i = 0; i < processedJobs.length; i += batchSize) {
       const batch = processedJobs.slice(i, i + batchSize);
@@ -255,13 +258,22 @@ router.post('/match-all-jobs', async (req, res) => {
         }
       }
       
-      // Log progress every 50 jobs
-      if ((i + batchSize) % 50 === 0 || (i + batchSize) >= processedJobs.length) {
+      // Log progress every 10 jobs for better visibility
+      if ((i + batchSize) % 10 === 0 || (i + batchSize) >= processedJobs.length) {
         const processed = Math.min(i + batchSize, processedJobs.length);
         const progressPercent = ((processed / processedJobs.length) * 100).toFixed(1);
-        logger.info(`Progress: ${processed}/${processedJobs.length} jobs (${progressPercent}%) - ${allMatches.length} matches found so far (>=40% match)`);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        const avgTimePerJob = (elapsed / processed).toFixed(2);
+        const estimatedRemaining = processed < processedJobs.length 
+          ? (((processedJobs.length - processed) * (Date.now() - startTime) / processed) / 1000).toFixed(0)
+          : '0';
+        
+        logger.info(`Progress: ${processed}/${processedJobs.length} jobs (${progressPercent}%) - ${allMatches.length} matches found (>=40% match) - Elapsed: ${elapsed}s - Est. remaining: ${estimatedRemaining}s`);
       }
     }
+    
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    logger.info(`✅ Matching completed in ${totalTime} seconds - Processed all ${processedJobs.length} jobs individually`);
 
     // Sort by match percentage (highest first)
     allMatches.sort((a, b) => b.matchDetails.matchPercentage - a.matchDetails.matchPercentage);
