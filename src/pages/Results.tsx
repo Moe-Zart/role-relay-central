@@ -47,7 +47,7 @@ const Results = () => {
   useEffect(() => {
     if (parsedResume && !isMatchingJobs && matchedJobIds.size === 0) {
       setIsMatchingJobs(true);
-      setMatchingProgress({ current: 0, total: 1, matched: 0 });
+      setMatchingProgress({ current: 0, total: 100, matched: 0 }); // Show indeterminate progress
       
       console.log('Starting comprehensive resume matching for ALL jobs in database...');
       
@@ -87,7 +87,7 @@ const Results = () => {
           });
         });
     }
-  }, [parsedResume]); // Only run when resume changes
+  }, [parsedResume, setJobMatches, toast]); // Only run when resume changes
 
   const formatTimeAgo = (dateString: string) => {
     try {
@@ -398,12 +398,23 @@ const Results = () => {
                           </div>
                           {matchingProgress.total > 0 && (
                             <div className="space-y-1">
-                              <Progress 
-                                value={(matchingProgress.current / matchingProgress.total) * 100} 
-                                className="w-full"
-                              />
+                              {matchingProgress.current === matchingProgress.total ? (
+                                <Progress 
+                                  value={100} 
+                                  className="w-full"
+                                />
+                              ) : (
+                                <div className="relative">
+                                  <Progress 
+                                    value={undefined} 
+                                    className="w-full"
+                                  />
+                                </div>
+                              )}
                               <p className="text-xs text-muted-foreground">
-                                Processing jobs: {matchingProgress.current} / {matchingProgress.total} ({matchingProgress.matched} matches found so far)
+                                {matchingProgress.current === matchingProgress.total 
+                                  ? `Completed: ${matchingProgress.matched} matches found out of ${matchingProgress.total} total jobs`
+                                  : 'Processing all jobs in database... Please wait'}
                               </p>
                             </div>
                           )}
