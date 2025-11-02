@@ -42,17 +42,17 @@ router.get('/jobs', async (req, res) => {
     
     if (search) {
       // Intelligent search: split by space to handle multiple terms
-      // Each term should match in title, company, or description
+      // Any term matching is enough (OR of ORs) - this allows broader results from expanded search queries
       const searchTerms = search.trim().split(/\s+/).filter(term => term.length > 0);
       
       if (searchTerms.length > 0) {
-        // For each search term, create OR conditions
-        // All terms must match somewhere (AND of ORs)
+        // For each search term, create OR conditions (title OR company OR description)
+        // Then combine all terms with OR (any term matching is enough)
         const termConditions = searchTerms.map(() => {
           return '(j.title LIKE ? OR j.company LIKE ? OR j.description_snippet LIKE ? OR j.description_full LIKE ?)';
         });
         
-        conditions.push(`(${termConditions.join(' AND ')})`);
+        conditions.push(`(${termConditions.join(' OR ')})`);
         
         // Add parameters for each term (title, company, snippet, full description)
         searchTerms.forEach(term => {
