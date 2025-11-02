@@ -19,14 +19,16 @@ const upload = multer({
 router.post('/upload', upload.single('resume'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+      res.status(400).json({ error: 'No file uploaded' });
+      return;
     }
 
     // Accept PDF and DOCX (for now, PDF only for parsing)
     if (req.file.mimetype !== 'application/pdf') {
-      return res.status(400).json({ 
+      res.status(400).json({ 
         error: 'Only PDF files are supported. Please convert your resume to PDF.' 
       });
+      return;
     }
 
     logger.info(`Processing resume upload: ${req.file.originalname} (${req.file.size} bytes)`);
@@ -36,9 +38,10 @@ router.post('/upload', upload.single('resume'), async (req, res) => {
     const resumeText = pdfData.text;
 
     if (!resumeText || resumeText.trim().length < 50) {
-      return res.status(400).json({ 
+      res.status(400).json({ 
         error: 'Resume text could not be extracted. Please ensure the PDF contains selectable text.' 
       });
+      return;
     }
 
     logger.info(`Extracted ${resumeText.length} characters from resume`);
@@ -74,7 +77,8 @@ router.post('/match-jobs', async (req, res) => {
     const { parsedResume } = req.body;
 
     if (!parsedResume) {
-      return res.status(400).json({ error: 'No parsed resume data provided' });
+      res.status(400).json({ error: 'No parsed resume data provided' });
+      return;
     }
 
     logger.info('Matching resume to jobs in database...');
@@ -161,7 +165,8 @@ router.post('/match-single-job', async (req, res) => {
     const { parsedResume, job } = req.body;
 
     if (!parsedResume || !job) {
-      return res.status(400).json({ error: 'Missing parsedResume or job data' });
+      res.status(400).json({ error: 'Missing parsedResume or job data' });
+      return;
     }
 
     const matchDetails = await resumeMatcher.matchJobToResume(parsedResume, job);
