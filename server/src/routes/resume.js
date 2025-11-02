@@ -184,4 +184,99 @@ router.post('/match-single-job', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/v1/resume/match-all-jobs
+ * Match resume to ALL jobs in database (for comprehensive matching)
+ */
+router.post('/match-all-jobs', async (req, res) => {
+  try {
+    const { parsedResume } = req.body;
+
+    if (!parsedResume) {
+      res.status(400).json({ error: 'No parsed resume data provided' });
+      return;
+    }
+
+    logger.info('Matching resume to ALL jobs in database...');
+
+    // Fetch ALL jobs from database (no limit)
+    const db = getDatabase();
+    const jobs = await new Promise((resolve, reject) => {
+      db.all(`
+        SELECT j.*, 
+               GROUP_CONCAT(
+                 json_object(
+                   'site', js.site,
+                   'url', js.url,
+                   'postedAt', js.posted_at,
+                   'externalId', js.external_id
+                 )
+               ) as sources_json
+        FROM jobs j
+        LEFT JOIN job_sources js ON j.id = js.job_id
+        GROUP BY j.id
+        ORDER BY j.posted_at DESC
+      `, [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+
+    // Parse sources JSON
+    const processedJobs = jobs.map(job => ({
+      ...job,
+      sources: job.sources_json ? JSON.parse(`[${job.sources_json}]`) : []
+    }));
+
+    logger.info(`Found ${processedJobs.length} total jobs to match against`);
+
+    // Match resume to all jobs with progress tracking
+    const batchSize = 20; // Process 20 jobs at a time
+    const allMatches = [];
+    
+    for (let i = 0; i < processedJobs.length; i += batchSize) {
+      const batch = processedJobs.slice(i, i + batchSize);
+      const batchMatches = await Promise.all(
+        batch.map(async (job) => {
+          const matchDetails = await resumeMatcher.matchJobToResume(parsedResume, job);
+          return {
+            jobId: job.id,
+            matchDetails
+          };
+        })
+      );
+      
+      // Only include jobs with match percentage > 0 (filter out non-matches)
+      batchMatches.forEach(({ jobId, matchDetails }) => {
+        if (matchDetails.matchPercentage > 0) {
+          allMatches.push({ jobId, matchDetails });
+        }
+      });
+      
+      // Send progress update (optional - can be used for progress bar)
+      if ((i + batchSize) % 100 === 0 || (i + batchSize) >= processedJobs.length) {
+        logger.info(`Progress: ${Math.min(i + batchSize, processedJobs.length)}/${processedJobs.length} jobs processed, ${allMatches.length} matches found`);
+      }
+    }
+
+    // Sort by match percentage (highest first)
+    allMatches.sort((a, b) => b.matchDetails.matchPercentage - a.matchDetails.matchPercentage);
+
+    logger.info(`Resume matching completed. ${allMatches.length} relevant jobs found (out of ${processedJobs.length} total). Top match: ${allMatches[0]?.matchDetails?.matchPercentage}%`);
+
+    res.json({
+      success: true,
+      totalJobs: processedJobs.length,
+      matchedJobs: allMatches.length,
+      matches: allMatches // Array of { jobId, matchDetails }
+    });
+  } catch (error) {
+    logger.error('Error matching resume to all jobs:', error);
+    res.status(500).json({ 
+      error: 'Failed to match resume to all jobs',
+      details: error.message 
+    });
+  }
+});
+
 export default router;

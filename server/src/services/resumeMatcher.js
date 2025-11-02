@@ -50,36 +50,54 @@ class ResumeMatcher {
         }
       });
 
-      // 3. Match experience level
-      const experienceLevels = ['Internship', 'Junior', 'Mid', 'Senior', 'Lead'];
-      const resumeLevelIndex = experienceLevels.indexOf(resumeData.experienceLevel);
-      const jobLevelIndex = experienceLevels.indexOf(job.experience || 'Mid');
-      
-      matchDetails.experienceLevelMatch = Math.abs(resumeLevelIndex - jobLevelIndex) <= 1; // Allow 1 level difference
-
-      // 4. Semantic similarity
+      // 3. Semantic similarity
       const semanticScore = await semanticMatcher.calculateSimilarity(
-        resumeData.summary,
+        resumeData.summary || resumeData.rawText?.substring(0, 500) || '',
         job.title,
         job.description_snippet || job.description_full || ''
       );
 
-      // 5. Calculate overall match score
+      // 4. Calculate match ratios (normalized 0-1)
       const skillMatchRatio = matchDetails.skillsMatched.length / Math.max(resumeData.skills.length, 1);
       const techMatchRatio = matchDetails.technologiesMatched.length / Math.max(resumeData.technologies.length, 1);
-      const semanticWeight = 0.4;
-      const skillWeight = 0.3;
-      const techWeight = 0.2;
-      const experienceWeight = 0.1;
+      
+      // 5. Strict matching: require at least some match (skills OR technologies OR high semantic)
+      // If NO skills match AND NO techs match AND semantic score is low, filter out (0% match)
+      const hasAnyMatch = matchDetails.skillsMatched.length > 0 || 
+                         matchDetails.technologiesMatched.length > 0 || 
+                         semanticScore > 0.5;
+      
+      if (!hasAnyMatch) {
+        // No meaningful match - return 0%
+        matchDetails.overallScore = 0;
+        matchDetails.matchPercentage = 0;
+        return matchDetails;
+      }
 
+      // 6. Calculate overall match score with improved weighting
+      // Higher weight for skills and technologies (more concrete matches)
+      // Semantic similarity is important but secondary
+      const semanticWeight = 0.3;
+      const skillWeight = 0.4;  // Increased from 0.3
+      const techWeight = 0.3;   // Increased from 0.2
+
+      // Use squared ratios to emphasize strong matches
+      // This means 100% skill match contributes more than 50% skill match
       matchDetails.overallScore = (
         semanticScore * semanticWeight +
-        skillMatchRatio * skillWeight +
-        techMatchRatio * techWeight +
-        (matchDetails.experienceLevelMatch ? 1 : 0) * experienceWeight
+        Math.pow(skillMatchRatio, 1.2) * skillWeight +
+        Math.pow(techMatchRatio, 1.2) * techWeight
       );
 
+      // Scale to 0-100, but ensure minimum threshold
       matchDetails.matchPercentage = Math.round(matchDetails.overallScore * 100);
+      
+      // Only return matches with at least 20% relevance (stricter threshold)
+      if (matchDetails.matchPercentage < 20) {
+        matchDetails.matchPercentage = 0;
+        matchDetails.overallScore = 0;
+        return matchDetails;
+      }
 
       // 6. Generate match reasons
       if (matchDetails.skillsMatched.length > 0) {
@@ -92,12 +110,10 @@ class ResumeMatcher {
         matchDetails.matchReasons.push(`Uses technologies you know: ${topMatchedTech}`);
       }
 
-      if (matchDetails.experienceLevelMatch) {
-        matchDetails.matchReasons.push(`Experience level matches: ${resumeData.experienceLevel}`);
-      }
-
-      if (semanticScore > 0.6) {
+      if (semanticScore > 0.7) {
         matchDetails.matchReasons.push('High semantic similarity to your background');
+      } else if (semanticScore > 0.5) {
+        matchDetails.matchReasons.push('Good semantic alignment with your experience');
       }
 
       if (matchDetails.matchReasons.length === 0) {

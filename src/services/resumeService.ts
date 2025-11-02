@@ -138,6 +138,30 @@ class ResumeService {
       body: JSON.stringify({ parsedResume, job }),
     });
   }
+
+  /**
+   * Match resume to ALL jobs in database
+   * Returns matches with progress callback for progress bar
+   */
+  async matchAllJobs(
+    parsedResume: ParsedResume,
+    onProgress?: (progress: { current: number; total: number; matched: number }) => void
+  ): Promise<{
+    success: boolean;
+    totalJobs: number;
+    matchedJobs: number;
+    matches: Array<{ jobId: string; matchDetails: ResumeMatchDetails }>;
+  }> {
+    // For now, use the endpoint directly - progress can be tracked on server side
+    // In future, could use Server-Sent Events or WebSocket for real-time progress
+    return this.request('/resume/match-all-jobs', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ parsedResume }),
+    });
+  }
 }
 
 export const resumeService = new ResumeService();

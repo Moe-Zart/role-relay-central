@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Progress } from "@/components/ui/progress";
 import { SearchFilters, JobBundle } from "@/types/jobs";
 import { jobApiService } from "@/services/jobApi";
 import { resumeService } from "@/services/resumeService";
@@ -39,70 +40,54 @@ const Results = () => {
   const { parsedResume, getMatchForJob, setJobMatches } = useResume();
   const resumeMatchParam = searchParams.get('resumeMatch');
   const [isMatchingJobs, setIsMatchingJobs] = useState(false);
+  const [matchingProgress, setMatchingProgress] = useState({ current: 0, total: 0, matched: 0 });
+  const [matchedJobIds, setMatchedJobIds] = useState<Set<string>>(new Set());
   
-  // Match all jobs when resume exists and jobs are loaded
+  // Match ALL jobs in database when resume exists (only once on mount or resume change)
   useEffect(() => {
-    if (parsedResume && jobBundles.length > 0 && !isMatchingJobs) {
-      // Check if we need to match (if matches don't exist for current jobs)
-      const needsMatching = jobBundles.some(bundle => !getMatchForJob(bundle.canonicalJob.id));
+    if (parsedResume && !isMatchingJobs && matchedJobIds.size === 0) {
+      setIsMatchingJobs(true);
+      setMatchingProgress({ current: 0, total: 1, matched: 0 });
       
-      if (needsMatching) {
-        setIsMatchingJobs(true);
-        console.log(`Matching ${jobBundles.length} jobs to resume...`);
-        
-        // Match all jobs in batches (process 10 at a time to avoid overwhelming the server)
-        const batchSize = 10;
-        const allMatches = new Map<string, any>();
-        
-        const processBatch = async (batch: typeof jobBundles) => {
-          const matchPromises = batch.map(bundle => {
-            const existingMatch = getMatchForJob(bundle.canonicalJob.id);
-            if (existingMatch) {
-              return Promise.resolve({ jobId: bundle.canonicalJob.id, match: existingMatch });
-            }
-            
-            return resumeService.matchSingleJob(parsedResume, {
-              id: bundle.canonicalJob.id,
-              title: bundle.canonicalJob.title,
-              company: bundle.canonicalJob.company,
-              experience: bundle.canonicalJob.experience,
-              description_snippet: bundle.canonicalJob.descriptionSnippet,
-              description_full: bundle.canonicalJob.descriptionFull
-            }).then(result => ({
-              jobId: bundle.canonicalJob.id,
-              match: result.matchDetails
-            })).catch((error) => {
-              console.error(`Error matching job ${bundle.canonicalJob.id}:`, error);
-              return null;
-            });
+      console.log('Starting comprehensive resume matching for ALL jobs in database...');
+      
+      resumeService.matchAllJobs(parsedResume)
+        .then(result => {
+          console.log(`Resume matching completed: ${result.matchedJobs} matches out of ${result.totalJobs} total jobs`);
+          
+          // Store all matches
+          const matchesMap = new Map<string, any>();
+          const matchedIds = new Set<string>();
+          
+          result.matches.forEach(({ jobId, matchDetails }) => {
+            matchesMap.set(jobId, matchDetails);
+            matchedIds.add(jobId);
           });
           
-          const results = await Promise.all(matchPromises);
-          results.forEach(result => {
-            if (result && result.match) {
-              allMatches.set(result.jobId, result.match);
-            }
-          });
-        };
-        
-        // Process in batches
-        (async () => {
-          for (let i = 0; i < jobBundles.length; i += batchSize) {
-            const batch = jobBundles.slice(i, i + batchSize);
-            await processBatch(batch);
-          }
+          setJobMatches(matchesMap);
+          setMatchedJobIds(matchedIds);
+          setMatchingProgress({ current: result.totalJobs, total: result.totalJobs, matched: result.matchedJobs });
+          setIsMatchingJobs(false);
           
-          // Update all matches at once
-          setJobMatches(allMatches);
+          toast({
+            title: "Resume matching complete!",
+            description: `Found ${result.matchedJobs} matching jobs out of ${result.totalJobs} total.`,
+            variant: "default"
+          });
+        })
+        .catch(error => {
+          console.error('Error matching all jobs:', error);
           setIsMatchingJobs(false);
-          console.log(`Matched ${allMatches.size} jobs to resume`);
-        })().catch(error => {
-          console.error('Error matching jobs:', error);
-          setIsMatchingJobs(false);
+          setMatchingProgress({ current: 0, total: 0, matched: 0 });
+          
+          toast({
+            title: "Matching failed",
+            description: "Failed to match resume to jobs. Please try again.",
+            variant: "destructive"
+          });
         });
-      }
     }
-  }, [parsedResume, jobBundles, getMatchForJob, setJobMatches, isMatchingJobs]);
+  }, [parsedResume]); // Only run when resume changes
 
   const formatTimeAgo = (dateString: string) => {
     try {
@@ -212,24 +197,37 @@ const Results = () => {
   const filteredJobs = useMemo(() => {
     let filtered = [...jobBundles];
 
-    // If resume is present, prioritize by match score first
-    if (parsedResume && sortBy === "newest") {
+    // If resume is present, filter to only show matched jobs and sort by match percentage
+    if (parsedResume && matchedJobIds.size > 0) {
+      // Filter: only show jobs that have matches (match percentage > 0)
+      filtered = filtered.filter(bundle => {
+        const match = getMatchForJob(bundle.canonicalJob.id);
+        return match && match.matchPercentage > 0;
+      });
+
+      // Always sort by match percentage (highest first) when resume is present
       filtered.sort((a, b) => {
         const matchA = getMatchForJob(a.canonicalJob.id);
         const matchB = getMatchForJob(b.canonicalJob.id);
         
-        // Sort by match percentage (highest first) if both have matches
         if (matchA && matchB) {
+          // Primary sort: match percentage (highest first)
           const scoreDiff = matchB.matchPercentage - matchA.matchPercentage;
-          if (Math.abs(scoreDiff) > 5) { // Only reorder if significant difference
+          if (scoreDiff !== 0) {
             return scoreDiff;
           }
+          // Secondary sort: posted date (newest first) for same match percentage
+          return new Date(b.canonicalJob.postedAt).getTime() - new Date(a.canonicalJob.postedAt).getTime();
         }
-        // Fall back to date if no significant match difference
+        
+        // Fallback: if one has match and other doesn't, prioritize the one with match
+        if (matchA && !matchB) return -1;
+        if (!matchA && matchB) return 1;
+        
         return new Date(b.canonicalJob.postedAt).getTime() - new Date(a.canonicalJob.postedAt).getTime();
       });
     } else {
-      // Apply standard sorting
+      // Apply standard sorting when no resume
       filtered.sort((a, b) => {
         switch (sortBy) {
           case "newest":
@@ -245,7 +243,7 @@ const Results = () => {
     }
 
     return filtered;
-  }, [jobBundles, sortBy, parsedResume, getMatchForJob]);
+  }, [jobBundles, sortBy, parsedResume, getMatchForJob, matchedJobIds.size]);
 
   const handleSearch = (newFilters: SearchFilters) => {
     setFilters(newFilters);
@@ -388,12 +386,36 @@ const Results = () => {
                       `${pagination.total} job${pagination.total !== 1 ? 's' : ''} found`
                     )}
                   </h2>
-                  {parsedResume && !loading && (
-                    <div className="flex items-center space-x-2 mt-1">
-                      <Sparkles className="h-4 w-4 text-primary" />
-                      <span className="text-sm text-muted-foreground">
-                        {isMatchingJobs ? 'Matching jobs to your resume...' : 'Jobs are matched to your resume'}
-                      </span>
+                  {parsedResume && (
+                    <div className="flex flex-col space-y-2 mt-1">
+                      {isMatchingJobs ? (
+                        <>
+                          <div className="flex items-center space-x-2">
+                            <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+                            <span className="text-sm text-muted-foreground">
+                              Matching all jobs to your resume... This may take a moment
+                            </span>
+                          </div>
+                          {matchingProgress.total > 0 && (
+                            <div className="space-y-1">
+                              <Progress 
+                                value={(matchingProgress.current / matchingProgress.total) * 100} 
+                                className="w-full"
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Processing jobs: {matchingProgress.current} / {matchingProgress.total} ({matchingProgress.matched} matches found so far)
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="flex items-center space-x-2">
+                          <Sparkles className="h-4 w-4 text-primary" />
+                          <span className="text-sm text-muted-foreground">
+                            Showing {matchedJobIds.size} matched jobs (sorted by match %)
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
