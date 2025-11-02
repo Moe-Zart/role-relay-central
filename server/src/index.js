@@ -43,17 +43,39 @@ const allowedOrigins = [
   'http://localhost:8080',
   'http://127.0.0.1:8080',
   'http://127.0.0.1:5173',
-  process.env.FRONTEND_URL
+  process.env.FRONTEND_URL,
+  // Allow common deployment platforms
+  /^https:\/\/.*\.vercel\.app$/,
+  /^https:\/\/.*\.railway\.app$/,
+  /^https:\/\/.*\.onrender\.com$/,
+  /^https:\/\/.*\.netlify\.app$/
 ].filter(Boolean);
 
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    
+    // Check exact matches
+    if (allowedOrigins.some(allowed => {
+      if (typeof allowed === 'string') {
+        return allowed === origin;
+      }
+      // Check regex patterns
+      if (allowed instanceof RegExp) {
+        return allowed.test(origin);
+      }
+      return false;
+    })) {
       callback(null, true);
     } else {
-      callback(null, true); // Allow all origins for development
+      // In production, only allow configured origins
+      // In development, allow all (fallback)
+      if (process.env.NODE_ENV === 'production' && !process.env.FRONTEND_URL) {
+        callback(new Error('Not allowed by CORS'));
+      } else {
+        callback(null, true); // Allow all origins for development
+      }
     }
   },
   credentials: true,

@@ -1,7 +1,7 @@
 import { Job, JobBundle, SearchFilters } from '@/types/jobs';
 import { intelligentJobMatcher } from './intelligentJobMatcher';
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
 
 export interface ApiJob extends Job {
   sources_json?: string;

@@ -22,3 +22,20 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment variables
+.env
+.env.local
+.env.production.local
+.env.development.local
+
+# Database (keep structure but ignore data in some cases)
+# server/data/jobs.db - commented out so database is tracked for initial setup
+
+# Build outputs
+build
+out
+
+# Puppeteer
+.cache
+.local-chromium
