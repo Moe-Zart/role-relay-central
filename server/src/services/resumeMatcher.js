@@ -61,80 +61,167 @@ class ResumeMatcher {
       const skillMatchRatio = matchDetails.skillsMatched.length / Math.max(resumeData.skills.length, 1);
       const techMatchRatio = matchDetails.technologiesMatched.length / Math.max(resumeData.technologies.length, 1);
       
-      // 5. STRICT MATCHING: Require MULTIPLE indicators of match
-      // Must have at least 2 out of 3: skills match, technologies match, OR high semantic (>0.65)
-      // Single indicator alone is not enough
+      // 5. IMPROVED MATCHING: More lenient but still accurate
+      // Require at least 1 indicator OR moderate semantic score (>0.55)
+      // This allows good matches to show up while filtering out unrelated jobs
       const hasSkillsMatch = matchDetails.skillsMatched.length > 0;
       const hasTechMatch = matchDetails.technologiesMatched.length > 0;
-      const hasHighSemantic = semanticScore > 0.65; // Higher threshold for semantic
+      const hasModerateSemantic = semanticScore > 0.55;
       
-      const matchIndicators = (hasSkillsMatch ? 1 : 0) + (hasTechMatch ? 1 : 0) + (hasHighSemantic ? 1 : 0);
+      const matchIndicators = (hasSkillsMatch ? 1 : 0) + (hasTechMatch ? 1 : 0) + (hasModerateSemantic ? 1 : 0);
       
-      // Require at least 2 indicators OR very high semantic (>0.75) alone
-      if (matchIndicators < 2 && semanticScore <= 0.75) {
-        // Not enough match indicators - return 0%
+      // Require at least 1 indicator (more lenient) OR good semantic (>0.6) alone
+      if (matchIndicators === 0 && semanticScore <= 0.6) {
+        // No match indicators - return 0%
         matchDetails.overallScore = 0;
         matchDetails.matchPercentage = 0;
         return matchDetails;
       }
 
-      // 6. Calculate overall match score with STRICTER weighting
-      // Require meaningful matches - boost scores for jobs with multiple match types
-      const semanticWeight = 0.25; // Reduced - semantic is less reliable alone
-      const skillWeight = 0.45;     // Increased - skills are most important
-      const techWeight = 0.30;      // Increased - technologies are very important
+      // 6. Calculate overall match score with IMPROVED weighting for higher percentages
+      // Base weights that sum to 1.0, allowing scores to reach 100%
+      const semanticWeight = 0.30; // Increased - semantic is valuable
+      const skillWeight = 0.40;     // Skills are important
+      const techWeight = 0.30;      // Technologies are important
 
-      // Apply exponential scaling to emphasize STRONG matches
-      // Jobs with 100% skill match get MUCH higher score than 50% match
-      const skillScore = Math.pow(skillMatchRatio, 1.5) * skillWeight;
-      const techScore = Math.pow(techMatchRatio, 1.5) * techWeight;
+      // Use gentler exponential scaling (1.2 instead of 1.5) to reward partial matches more
+      // This makes 60% skill match give ~56% score instead of ~46%
+      const skillScore = Math.pow(skillMatchRatio, 1.2) * skillWeight;
+      const techScore = Math.pow(techMatchRatio, 1.2) * techWeight;
       
-      // Semantic score only contributes if it's reasonably high
-      const effectiveSemanticScore = semanticScore > 0.6 ? semanticScore : semanticScore * 0.5;
+      // Enhanced semantic score contribution - more generous for good matches
+      let effectiveSemanticScore = semanticScore;
+      if (semanticScore > 0.7) {
+        // Boost very high semantic scores (90%+ semantic = excellent match)
+        effectiveSemanticScore = semanticScore * 1.1; // 10% boost
+      } else if (semanticScore > 0.6) {
+        // Slight boost for good semantic scores
+        effectiveSemanticScore = semanticScore * 1.05; // 5% boost
+      } else if (semanticScore > 0.5) {
+        // Keep moderate scores as-is
+        effectiveSemanticScore = semanticScore;
+      } else {
+        // Reduce low semantic scores slightly (but less penalty)
+        effectiveSemanticScore = semanticScore * 0.8;
+      }
+      // Cap semantic at 1.0
+      effectiveSemanticScore = Math.min(1.0, effectiveSemanticScore);
+      
       const semanticContribution = effectiveSemanticScore * semanticWeight;
       
-      // Bonus multiplier if job has BOTH skills AND technologies matched
-      const multiMatchBonus = (hasSkillsMatch && hasTechMatch) ? 1.15 : 1.0;
+      // Calculate base score
+      let baseScore = semanticContribution + skillScore + techScore;
       
-      matchDetails.overallScore = (
-        (semanticContribution + skillScore + techScore) * multiMatchBonus
-      );
+      // Progressive bonuses for strong matches - helps reach 90-100%
+      let bonusMultiplier = 1.0;
+      
+      // Bonus 1: Skills + Technologies both matched
+      if (hasSkillsMatch && hasTechMatch) {
+        bonusMultiplier += 0.12; // 12% bonus
+      }
+      
+      // Bonus 2: High skill match rate (70%+)
+      if (skillMatchRatio >= 0.7) {
+        bonusMultiplier += 0.08; // 8% bonus
+      }
+      
+      // Bonus 3: High tech match rate (70%+)
+      if (techMatchRatio >= 0.7) {
+        bonusMultiplier += 0.08; // 8% bonus
+      }
+      
+      // Bonus 4: Very high semantic similarity (80%+)
+      if (semanticScore >= 0.8) {
+        bonusMultiplier += 0.10; // 10% bonus
+      }
+      
+      // Bonus 5: Perfect or near-perfect matches (all 3 indicators strong)
+      if (skillMatchRatio >= 0.8 && techMatchRatio >= 0.8 && semanticScore >= 0.7) {
+        bonusMultiplier += 0.15; // Additional 15% for exceptional matches
+      }
+      
+      // Apply bonuses
+      baseScore = baseScore * bonusMultiplier;
+      
+      // Ensure base score doesn't exceed 1.0 before bonuses
+      baseScore = Math.min(1.0, baseScore);
+      
+      // Final score after bonuses (can exceed 1.0 temporarily, will be capped)
+      matchDetails.overallScore = baseScore * bonusMultiplier;
 
       // Scale to 0-100
       matchDetails.matchPercentage = Math.round(matchDetails.overallScore * 100);
       
-      // STRICT THRESHOLD: Only show jobs with at least 40% match
-      // This ensures only genuinely relevant jobs appear
-      if (matchDetails.matchPercentage < 40) {
+      // More lenient threshold: Show jobs with at least 35% match (was 40%)
+      // But only if they have some real indicators
+      if (matchDetails.matchPercentage < 35) {
         matchDetails.matchPercentage = 0;
         matchDetails.overallScore = 0;
         return matchDetails;
       }
       
-      // Cap at 100%
+      // Cap at 100% but allow strong matches to reach it
       if (matchDetails.matchPercentage > 100) {
         matchDetails.matchPercentage = 100;
       }
+      
+      // Ensure very strong matches can reach 95-100%
+      // If we have strong indicators across the board, boost to near-perfect
+      if (skillMatchRatio >= 0.75 && techMatchRatio >= 0.75 && semanticScore >= 0.75) {
+        matchDetails.matchPercentage = Math.max(matchDetails.matchPercentage, 95);
+      }
 
-      // 6. Generate match reasons
+      // 7. Generate match reasons with suggestions for improving match
+      const suggestions = [];
+      
       if (matchDetails.skillsMatched.length > 0) {
         const topMatchedSkills = matchDetails.skillsMatched.slice(0, 5).join(', ');
-        matchDetails.matchReasons.push(`Matches your skills: ${topMatchedSkills}`);
+        matchDetails.matchReasons.push(`✓ Matches your skills: ${topMatchedSkills}`);
       }
 
       if (matchDetails.technologiesMatched.length > 0) {
         const topMatchedTech = matchDetails.technologiesMatched.slice(0, 5).join(', ');
-        matchDetails.matchReasons.push(`Uses technologies you know: ${topMatchedTech}`);
+        matchDetails.matchReasons.push(`✓ Uses technologies you know: ${topMatchedTech}`);
       }
 
-      if (semanticScore > 0.7) {
-        matchDetails.matchReasons.push('High semantic similarity to your background');
-      } else if (semanticScore > 0.5) {
-        matchDetails.matchReasons.push('Good semantic alignment with your experience');
+      if (semanticScore >= 0.75) {
+        matchDetails.matchReasons.push('✓ Excellent semantic match with your background');
+      } else if (semanticScore >= 0.65) {
+        matchDetails.matchReasons.push('✓ Strong semantic alignment with your experience');
+      } else if (semanticScore >= 0.55) {
+        matchDetails.matchReasons.push('✓ Good semantic similarity to your profile');
+      }
+
+      // Add suggestions for how to get closer to 100%
+      if (matchDetails.matchPercentage < 100) {
+        if (skillMatchRatio < 0.7 && resumeData.skills.length > 0) {
+          const missingCount = Math.ceil((1 - skillMatchRatio) * resumeData.skills.length);
+          suggestions.push(`Learn ${missingCount} more required skill${missingCount > 1 ? 's' : ''} to increase match`);
+        }
+        if (techMatchRatio < 0.7 && resumeData.technologies.length > 0) {
+          const missingCount = Math.ceil((1 - techMatchRatio) * resumeData.technologies.length);
+          suggestions.push(`Gain experience with ${missingCount} more technology${missingCount > 1 ? 'ies' : ''} to boost score`);
+        }
+        if (semanticScore < 0.75) {
+          suggestions.push('Gain more relevant experience to improve semantic match');
+        }
+      }
+      
+      if (suggestions.length > 0) {
+        matchDetails.suggestionsForImprovement = suggestions;
       }
 
       if (matchDetails.matchReasons.length === 0) {
         matchDetails.matchReasons.push('Some overlap with your background');
+      }
+      
+      // Add match quality indicator
+      if (matchDetails.matchPercentage >= 90) {
+        matchDetails.matchReasons.unshift('🎯 Excellent match!');
+      } else if (matchDetails.matchPercentage >= 75) {
+        matchDetails.matchReasons.unshift('⭐ Strong match');
+      } else if (matchDetails.matchPercentage >= 60) {
+        matchDetails.matchReasons.unshift('✓ Good match');
       }
 
       return matchDetails;
