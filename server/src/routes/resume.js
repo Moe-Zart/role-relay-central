@@ -266,8 +266,10 @@ router.post('/match-all-jobs', async (req, res) => {
     // Sort by match percentage (highest first)
     allMatches.sort((a, b) => b.matchDetails.matchPercentage - a.matchDetails.matchPercentage);
 
-    logger.info(`Resume matching completed. ${allMatches.length} relevant jobs found (out of ${processedJobs.length} total). Top match: ${allMatches[0]?.matchDetails?.matchPercentage}%`);
+    logger.info(`✅ Resume matching completed. ${allMatches.length} relevant jobs found (out of ${processedJobs.length} total) with >=40% match. Top match: ${allMatches[0]?.matchDetails?.matchPercentage}%`);
 
+    // Return job IDs and match details
+    // Frontend will fetch full job data using these IDs
     res.json({
       success: true,
       totalJobs: processedJobs.length,
