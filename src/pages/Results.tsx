@@ -69,11 +69,11 @@ const Results = () => {
           });
           
           setJobMatches(matchesMap);
-          setMatchedJobIds(matchedIds);
+          setMatchedJobIds(matchedIds); // Set matched IDs FIRST
           setMatchingProgress({ current: result.totalJobs, total: result.totalJobs, matched: result.matchedJobs });
-          setIsMatchingJobs(false);
           
-          // Fetch ONLY the matched jobs by their IDs
+          // Fetch ONLY the matched jobs by their IDs BEFORE clearing isMatchingJobs
+          // This prevents the fetchJobs effect from running
           const matchedIdsArray = Array.from(matchedIds);
           console.log(`Fetching ${matchedIdsArray.length} matched jobs by IDs:`, matchedIdsArray.slice(0, 5), '...');
           
@@ -112,6 +112,10 @@ const Results = () => {
                 
                 console.log(`✅ Setting ${matchedBundles.length} matched job bundles in state`);
                 setJobBundles(matchedBundles);
+                
+                // Clear isMatchingJobs AFTER setting job bundles to prevent fetchJobs from running
+                setIsMatchingJobs(false);
+                
                 console.log(`✅ Job bundles set. Next render should show ${matchedBundles.length} jobs`);
                 
                 toast({
@@ -252,12 +256,21 @@ const Results = () => {
   // Fetch jobs when filters change (only if not matching or if matching is complete)
   // BUT: Don't fetch if resume is present and we have matched jobs - matched jobs are already loaded
   useEffect(() => {
-    // Don't fetch if:
+    // CRITICAL: Don't fetch if:
     // 1. Currently matching (wait for matching to complete)
-    // 2. Resume is present AND we have matched job IDs (matched jobs are already loaded separately)
-    //    If resume is present but no matches yet, we might still need to fetch (shouldn't happen, but safe)
-    if (!isMatchingJobs && (!parsedResume || matchedJobIds.size === 0)) {
+    // 2. Resume is present AND we have matched job IDs (matched jobs are loaded separately via getJobsByIds)
+    //    We specifically loaded matched jobs, so don't overwrite them with a regular fetch
+    const shouldFetch = !isMatchingJobs && (!parsedResume || matchedJobIds.size === 0);
+    
+    if (shouldFetch) {
+      console.log('📥 Fetching jobs normally (no resume or no matches yet)');
       fetchJobs(1);
+    } else {
+      console.log('⏸️ Skipping fetchJobs:', {
+        isMatchingJobs,
+        hasResume: !!parsedResume,
+        matchedJobIdsSize: matchedJobIds.size
+      });
     }
   }, [filters, isMatchingJobs, parsedResume, matchedJobIds.size]);
 
