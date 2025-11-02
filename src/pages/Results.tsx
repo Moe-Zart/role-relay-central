@@ -48,12 +48,14 @@ const Results = () => {
     if (parsedResume && !isMatchingJobs && matchedJobIds.size === 0) {
       setIsMatchingJobs(true);
       setMatchingProgress({ current: 0, total: 100, matched: 0 }); // Show indeterminate progress
+      // Clear existing jobs while matching - this ensures no jobs show until matching completes
+      setJobBundles([]);
       
       console.log('Starting comprehensive resume matching for ALL jobs in database...');
       
       resumeService.matchAllJobs(parsedResume)
         .then(result => {
-          console.log(`Resume matching completed: ${result.matchedJobs} matches out of ${result.totalJobs} total jobs`);
+          console.log(`✅ Resume matching completed: ${result.matchedJobs} matches (>=40%) out of ${result.totalJobs} total jobs`);
           
           // Store all matches
           const matchesMap = new Map<string, any>();
@@ -69,10 +71,21 @@ const Results = () => {
           setMatchingProgress({ current: result.totalJobs, total: result.totalJobs, matched: result.matchedJobs });
           setIsMatchingJobs(false);
           
-          toast({
-            title: "Resume matching complete!",
-            description: `Found ${result.matchedJobs} matching jobs out of ${result.totalJobs} total.`,
-            variant: "default"
+          // Now fetch the matched jobs from the API
+          // The filtering will ensure only matched jobs (>=40%) are shown
+          fetchJobs(1).then(() => {
+            toast({
+              title: "Resume matching complete!",
+              description: `Found ${result.matchedJobs} matching jobs (>=40% match) out of ${result.totalJobs} total. Showing only matched jobs.`,
+              variant: "default"
+            });
+          }).catch(() => {
+            // If fetch fails, still show toast about matching
+            toast({
+              title: "Resume matching complete!",
+              description: `Found ${result.matchedJobs} matching jobs (>=40% match) out of ${result.totalJobs} total.`,
+              variant: "default"
+            });
           });
         })
         .catch(error => {
