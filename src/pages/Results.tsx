@@ -54,7 +54,7 @@ const Results = () => {
       console.log('Starting comprehensive resume matching for ALL jobs in database...');
       
       resumeService.matchAllJobs(parsedResume)
-        .then(result => {
+        .then(async (result) => {
           console.log(`✅ Resume matching completed: ${result.matchedJobs} matches (>=40%) out of ${result.totalJobs} total jobs`);
           
           // Store all matches
