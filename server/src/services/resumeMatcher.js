@@ -301,6 +301,118 @@ class ResumeMatcher {
     
     return jobsWithMatches;
   }
+
+  /**
+   * Determine job category from title and description
+   */
+  determineJobCategory(jobTitle, jobDescription) {
+    const text = `${jobTitle} ${jobDescription}`.toLowerCase();
+    
+    const categoryPatterns = {
+      data: {
+        keywords: ['data', 'analyst', 'analytics', 'data engineer', 'data scientist', 'bi', 'etl', 'warehouse', 'sql', 'business intelligence', 'machine learning engineer', 'ml engineer'],
+        weight: 0
+      },
+      frontend: {
+        keywords: ['frontend', 'front-end', 'front end', 'ui', 'ux developer', 'ui developer', 'react developer', 'vue developer', 'angular developer', 'web developer', 'client-side'],
+        weight: 0
+      },
+      backend: {
+        keywords: ['backend', 'back-end', 'back end', 'server', 'api developer', 'microservices', 'rest api', 'graphql', 'server-side', 'backend engineer'],
+        weight: 0
+      },
+      fullstack: {
+        keywords: ['fullstack', 'full-stack', 'full stack', 'full stack developer', 'full stack engineer'],
+        weight: 0
+      },
+      mobile: {
+        keywords: ['mobile', 'ios developer', 'android developer', 'react native', 'flutter', 'swift developer', 'kotlin developer'],
+        weight: 0
+      },
+      devops: {
+        keywords: ['devops', 'sre', 'site reliability', 'infrastructure', 'ci/cd', 'deployment engineer', 'platform engineer'],
+        weight: 0
+      },
+      cloud: {
+        keywords: ['cloud engineer', 'cloud architect', 'aws engineer', 'azure engineer', 'gcp engineer'],
+        weight: 0
+      },
+      cybersecurity: {
+        keywords: ['security', 'cybersecurity', 'penetration tester', 'security engineer', 'information security'],
+        weight: 0
+      }
+    };
+
+    // Calculate weights
+    Object.keys(categoryPatterns).forEach(category => {
+      categoryPatterns[category].keywords.forEach(keyword => {
+        if (text.includes(keyword)) {
+          categoryPatterns[category].weight += 1;
+        }
+      });
+    });
+
+    // Find category with highest weight
+    let maxWeight = 0;
+    let jobCategory = 'general';
+    
+    Object.keys(categoryPatterns).forEach(category => {
+      if (categoryPatterns[category].weight > maxWeight) {
+        maxWeight = categoryPatterns[category].weight;
+        jobCategory = category;
+      }
+    });
+
+    // Special handling: if both frontend and backend keywords exist, it's likely fullstack
+    if (categoryPatterns.frontend.weight > 0 && categoryPatterns.backend.weight > 0 && categoryPatterns.fullstack.weight === 0) {
+      jobCategory = 'fullstack';
+    }
+
+    return jobCategory;
+  }
+
+  /**
+   * Calculate category match score (0-1)
+   * Higher score = better category alignment
+   */
+  calculateCategoryMatch(resumeCategory, jobCategory) {
+    if (resumeCategory === jobCategory) {
+      return 1.0; // Perfect match
+    }
+
+    // Related categories get partial credit
+    const relatedCategories = {
+      'frontend': ['fullstack', 'web'],
+      'backend': ['fullstack', 'api'],
+      'fullstack': ['frontend', 'backend'],
+      'data': ['analytics', 'business intelligence'],
+      'devops': ['cloud', 'infrastructure'],
+      'cloud': ['devops', 'infrastructure'],
+      'mobile': ['frontend'] // Mobile can relate to frontend
+    };
+
+    if (relatedCategories[resumeCategory] && relatedCategories[resumeCategory].includes(jobCategory)) {
+      return 0.7; // Related category
+    }
+
+    // Check for opposite direction
+    if (relatedCategories[jobCategory] && relatedCategories[jobCategory].includes(resumeCategory)) {
+      return 0.7; // Related category (reverse)
+    }
+
+    // If fullstack resume matches frontend or backend job, good match
+    if (resumeCategory === 'fullstack' && (jobCategory === 'frontend' || jobCategory === 'backend')) {
+      return 0.8;
+    }
+
+    // If frontend or backend resume matches fullstack job, good match
+    if ((resumeCategory === 'frontend' || resumeCategory === 'backend') && jobCategory === 'fullstack') {
+      return 0.8;
+    }
+
+    // No relation - low score
+    return 0.2;
+  }
 }
 
 export const resumeMatcher = new ResumeMatcher();
