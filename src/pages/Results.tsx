@@ -95,8 +95,8 @@ const Results = () => {
                 
                 // Log job IDs for debugging
                 const fetchedJobIds = matchedBundles.map(b => b.canonicalJob.id);
-                console.log(`Fetched job IDs:`, fetchedJobIds.slice(0, 5));
-                console.log(`Matched job IDs set:`, Array.from(matchedIds).slice(0, 5));
+                console.log(`📋 Fetched job IDs:`, fetchedJobIds);
+                console.log(`🎯 Matched job IDs set:`, Array.from(matchedIds));
                 
                 // Verify all matched IDs are in fetched jobs
                 const missingIds = matchedIdsArray.filter(id => !fetchedJobIds.includes(id));
@@ -104,7 +104,15 @@ const Results = () => {
                   console.warn(`⚠️ Some matched job IDs not found in fetched jobs:`, missingIds);
                 }
                 
+                // Verify all fetched jobs are in matched set (should be true, but check anyway)
+                const unmatchedFetched = fetchedJobIds.filter(id => !matchedIds.has(id));
+                if (unmatchedFetched.length > 0) {
+                  console.warn(`⚠️ Some fetched job IDs are not in matched set:`, unmatchedFetched);
+                }
+                
+                console.log(`✅ Setting ${matchedBundles.length} matched job bundles in state`);
                 setJobBundles(matchedBundles);
+                console.log(`✅ Job bundles set. Next render should show ${matchedBundles.length} jobs`);
                 
                 toast({
                   title: "Resume matching complete!",
@@ -271,7 +279,9 @@ const Results = () => {
 
     // If resume is present and matching is complete, STRICTLY filter to only show matched jobs
     if (parsedResume && matchedJobIds.size > 0 && !isMatchingJobs) {
-      console.log(`Filtering ${filtered.length} jobs. Matched job IDs set size: ${matchedJobIds.size}`);
+      console.log(`🔍 Filtering ${filtered.length} jobs. Matched job IDs set size: ${matchedJobIds.size}`);
+      console.log(`🎯 Matched job IDs:`, Array.from(matchedJobIds));
+      console.log(`📦 Current job bundle IDs:`, filtered.map(b => b.canonicalJob.id));
       
       // STRICT FILTER: Only show jobs that:
       // 1. Are in the matchedJobIds set (matched by backend)
@@ -284,16 +294,16 @@ const Results = () => {
         const hasMatch = match && match.matchPercentage > 0;
         const meetsThreshold = match && match.matchPercentage >= 40;
         
-        // Debug logging for first few jobs
-        if (bundle === filtered[0] || bundle === filtered[1]) {
-          console.log(`Job ${jobId}: inMatchedSet=${inMatchedSet}, hasMatch=${hasMatch}, meetsThreshold=${meetsThreshold}, matchPercentage=${match?.matchPercentage}`);
+        // Debug logging for each job to understand why they're filtered
+        if (filtered.length <= 10) { // Only log if small number of jobs for debugging
+          console.log(`  Job "${bundle.canonicalJob.title}": id=${jobId}, inSet=${inMatchedSet}, hasMatch=${hasMatch}, meetsThreshold=${meetsThreshold}, match%=${match?.matchPercentage}`);
         }
         
         // Must be in matched set AND have valid match with sufficient percentage
         return inMatchedSet && hasMatch && meetsThreshold;
       });
       
-      console.log(`After filtering: ${filtered.length} jobs remain`);
+      console.log(`✅ After filtering: ${filtered.length} jobs remain (should match ${matchedJobIds.size} matched jobs)`);
 
       // Always sort by match percentage (highest first) when resume is present
       filtered.sort((a, b) => {
