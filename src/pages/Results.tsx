@@ -498,6 +498,8 @@ const Results = () => {
                           </p>
                         )}
                       </div>
+                    ) : parsedResume && matchedJobIds.size > 0 ? (
+                      `${matchedJobIds.size} matched job${matchedJobIds.size !== 1 ? 's' : ''} found`
                     ) : (
                       `${pagination.total} job${pagination.total !== 1 ? 's' : ''} found`
                     )}
@@ -601,8 +603,8 @@ const Results = () => {
                     ))}
                   </div>
                   
-                  {/* Load More Button */}
-                  {pagination.page < pagination.totalPages && (
+                  {/* Load More Button - Only show if NOT resume matching mode */}
+                  {!parsedResume && pagination.page < pagination.totalPages && (
                     <div className="flex justify-center mt-8">
                       <Button
                         onClick={loadNextPage}
@@ -624,8 +626,8 @@ const Results = () => {
                     </div>
                   )}
                   
-                  {/* Show current page info */}
-                  {pagination.totalPages > 1 && (
+                  {/* Show current page info - Only show if NOT resume matching mode */}
+                  {!parsedResume && pagination.totalPages > 1 && (
                     <div className="text-center mt-4 text-sm text-muted-foreground">
                       Page {pagination.page} of {pagination.totalPages}
                     </div>
